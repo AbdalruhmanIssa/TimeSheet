@@ -1,0 +1,1424 @@
+{
+  "info": {
+    "_postman_id": "9216f74c-5281-5d35-9254-40b597b66845",
+    "name": "TimeSheet",
+    "description": "# TimeSheet API\n\nLogging and approving project hours.\n\nAPI link (local): `http://localhost:5180` — Scalar UI at `/scalar/v1`.\n\n## How to use\n1. Import `TimeSheet.postman_environment.json` too and select the **TimeSheet Local** environment (it has `burl` and `token`).\n2. **Auth → Login** with the account you need — the token is saved to `{{token}}`.\n3. Every other request already uses `Bearer {{token}}` (set once on the collection).\n4. Ids in the route are written like `{projectId}` — replace them with a real id.\n\n## Errors\nEvery business error has the same shape:\n```json\n{\n  \"success\": false,\n  \"message\": \"...\"\n}\n```\n- `400` rule broken / invalid input\n- `401` no token / expired token\n- `403` your role can't use this endpoint\n- `404` not found **or not yours** (e.g. another director's project)\n\nEnums travel as names: `\"status\": \"OnHold\"`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{burl}}/api/Identity/Auths/login",
+              "host": [
+                "{{burl}}"
+              ],
+              "path": [
+                "api",
+                "Identity",
+                "Auths",
+                "login"
+              ]
+            },
+            "description": "Works with email **or** username.\n\nChange the body to the account you want to act as — the token is saved to `{{token}}` and every other request uses it.\n\nIf the account is blocked → `403` *Your account is blocked*.\n\n5 wrong passwords in a row lock the account for 1 minute → `403` *Your account is locked*.\n\nWrong email/username or password → `400`.\n\n---\n\nResponse:\n```json\n{\n  \"token\": \"JWT_TOKEN\",\n  \"expiresAtUtc\": \"2026-10-26T01:00:00Z\"\n}\n```\n\nToken claims: `Id` (user id), `Role`, `Name`, `FullName`, `Email`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUserName\": \"director\",\n  \"password\": \"Director@1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let jsonData = pm.response.json();",
+                  "",
+                  "pm.environment.set(\"token\", jsonData.token);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "## Validation\n\nPassword:\n- at least **8** characters\n- at least **one uppercase** letter\n- at least **one lowercase** letter\n- at least **one digit**\n- symbols like `@` are not required\n\nValidation errors return `400 Bad Request` with the first problem as the message:\n```json\n{\n  \"success\": false,\n  \"message\": \"...\"\n}\n```\n\nThe JWT lasts **60 minutes**; after that every request returns `401`.\n\n## Demo accounts (Development)\n\n| Username | Password | Role |\n|---|---|---|\n| director, director2 | Director@1234 | Director |\n| manager, manager2 | Manager@1234 | Manager |\n| employee, employee2, employee3 | Employee@1234 | Employee |",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "Director",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{burl}}/api/Director/Dashboards",
+              "host": [
+                "{{burl}}"
+              ],
+              "path": [
+                "api",
+                "Director",
+                "Dashboards"
+              ]
+            },
+            "description": "For the projects you direct:\n\n- `pendingReview.count` / `hours` / `oldestSubmittedAt` — your review queue (null date when empty)\n- `activeProjectCount`\n- `budgetAlerts` over your non-archived projects, one bucket per project (worst first): `exceededCount`, `projectedToExceedCount` (pending hours would push it over), `nearLimitCount` (80–100 %)\n- `approvedHoursThisMonth` — approved hours on your projects since the 1st\n\nThe queue is the same entries as **TimeEntries/GetPending**; details per project in **Reports/Portfolio**.\n\nCheap counts — the frontend **polls** this (e.g. every 30–60 s); there is no SignalR.\n\nResponse:\n```json\n{\n  \"pendingReview\": {\n    \"count\": 1,\n    \"hours\": 5.0,\n    \"oldestSubmittedAt\": \"2026-10-25T22:56:43.55\"\n  },\n  \"activeProjectCount\": 2,\n  \"budgetAlerts\": {\n    \"exceededCount\": 0,\n    \"projectedToExceedCount\": 0,\n    \"nearLimitCount\": 0\n  },\n  \"approvedHoursThisMonth\": 15.5\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Dropdowns",
+          "item": [
+            {
+              "name": "DropdownManagers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Users?role=Manager",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Users"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "Manager",
+                      "description": "Manager | Employee"
+                    }
+                  ]
+                },
+                "description": "Active (not blocked) managers for the **manager** dropdown in the project form — send the selected `id` as `managerId`.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"522e54c3-efb6-42c5-9b7e-a060541f8e00\",\n    \"fullName\": \"Demo Manager\",\n    \"userName\": \"manager\"\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "DropdownEmployees",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Users?role=Employee",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Users"
+                  ],
+                  "query": [
+                    {
+                      "key": "role",
+                      "value": "Employee",
+                      "description": "Manager | Employee"
+                    }
+                  ]
+                },
+                "description": "Active (not blocked) employees for the **employees** multi-select — send the selected ids in `employeeIds`.\n\nAny role other than Manager/Employee → `400`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Clients",
+          "item": [
+            {
+              "name": "GetAllClients",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "acme",
+                      "description": "client name or contact name",
+                      "disabled": true
+                    },
+                    {
+                      "key": "includeInactive",
+                      "value": "true",
+                      "description": "true | false (default false)",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Clients ordered by name. Deactivated clients are hidden unless `includeInactive=true`.\n\nClients are shared by all directors.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"d4531ad8-c417-44e0-2858-08df32e24f8f\",\n    \"name\": \"Acme Trading Co.\",\n    \"contactName\": \"Sara Haddad\",\n    \"contactEmail\": \"sara.haddad@acme.example\",\n    \"phone\": \"+966 11 000 0001\",\n    \"isActive\": true,\n    \"createdAt\": \"2026-10-25T21:52:48.8888756\",\n    \"updatedAt\": null\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "GetClientById",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients/{clientId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients",
+                    "{clientId}"
+                  ]
+                },
+                "description": "Response:\n```json\n{\n  \"id\": \"d4531ad8-c417-44e0-2858-08df32e24f8f\",\n  \"name\": \"Acme Trading Co.\",\n  \"contactName\": \"Sara Haddad\",\n  \"contactEmail\": \"sara.haddad@acme.example\",\n  \"phone\": \"+966 11 000 0001\",\n  \"isActive\": true,\n  \"createdAt\": \"2026-10-25T21:52:48.8888756\",\n  \"updatedAt\": null\n}\n```\n\nNot found → `404` *Client not found.*"
+              },
+              "response": []
+            },
+            {
+              "name": "CreateClient",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients"
+                  ]
+                },
+                "description": "`name` is required and must be unique → otherwise `400` *A client with this name already exists.*\n\n`contactName`, `contactEmail`, `phone` are optional (empty strings are saved as null).\n\nResponse `201 Created`:\n```json\n{\n  \"id\": \"d4531ad8-c417-44e0-2858-08df32e24f8f\",\n  \"name\": \"Acme Trading Co.\",\n  \"contactName\": \"Sara Haddad\",\n  \"contactEmail\": \"sara.haddad@acme.example\",\n  \"phone\": \"+966 11 000 0001\",\n  \"isActive\": true,\n  \"createdAt\": \"2026-10-25T21:52:48.8888756\",\n  \"updatedAt\": null\n}\n```",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme Trading Co.\",\n  \"contactName\": \"Sara Haddad\",\n  \"contactEmail\": \"sara.haddad@acme.example\",\n  \"phone\": \"+966 11 000 0001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateClient",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients/{clientId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients",
+                    "{clientId}"
+                  ]
+                },
+                "description": "Same rules as **CreateClient**.\n\nResponse: the updated client.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme Trading Company\",\n  \"contactName\": \"Omar Khalil\",\n  \"contactEmail\": null,\n  \"phone\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "DeactivateClient",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients/{clientId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients",
+                    "{clientId}"
+                  ]
+                },
+                "description": "Clients are **never deleted** — this sets `isActive = false`. The client stays in the database (old projects still point to it) but can't be used for new projects.\n\nResponse: the client with `\"isActive\": false`."
+              },
+              "response": []
+            },
+            {
+              "name": "ActivateClient",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Clients/{clientId}/activate",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Clients",
+                    "{clientId}",
+                    "activate"
+                  ]
+                },
+                "description": "The opposite of **DeactivateClient**.\n\nResponse: the client with `\"isActive\": true`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Projects",
+          "item": [
+            {
+              "name": "GetMyProjects",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Active",
+                      "description": "Active | OnHold | Completed | Archived",
+                      "disabled": true
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "",
+                      "description": "client id",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "PRJ",
+                      "description": "project code or name",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Only the projects **you direct**, ordered by code.\n\nOptional filters: `status`, `clientId`, `search` (code or name).\n\nResponse:\n```json\n[\n  {\n    \"id\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"code\": \"PRJ-0001\",\n    \"name\": \"Acme ERP Rollout\",\n    \"description\": \"Demo project for Acme Trading Co.\",\n    \"clientId\": \"d4531ad8-c417-44e0-2858-08df32e24f8f\",\n    \"clientName\": \"Acme Trading Co.\",\n    \"directorId\": \"50e0ac35-6467-42f7-8afc-81f04fadc250\",\n    \"directorName\": \"Demo Director\",\n    \"managerId\": \"522e54c3-efb6-42c5-9b7e-a060541f8e00\",\n    \"managerName\": \"Demo Manager\",\n    \"budgetHours\": 500.0,\n    \"startDate\": \"2026-08-26\",\n    \"endDate\": \"2027-02-22\",\n    \"status\": \"Active\",\n    \"activeEmployeeCount\": 2,\n    \"createdAt\": \"2026-10-25T22:06:28.3632554\",\n    \"updatedAt\": null\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "GetProjectById",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects/{projectId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects",
+                    "{projectId}"
+                  ]
+                },
+                "description": "Project details with the team.\n\n- `employees`: active ones first, then removed ones (history, `isActive: false`)\n- `isBudgetLocked`: `true` once the project has an **Approved** time entry → budget can't change any more\n\nAnother director's project → `404` *Project not found.* (it behaves as if it doesn't exist)\n\nResponse:\n```json\n{\n  \"id\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"code\": \"PRJ-0001\",\n  \"name\": \"Acme ERP Rollout\",\n  \"description\": \"Demo project for Acme Trading Co.\",\n  \"clientId\": \"d4531ad8-c417-44e0-2858-08df32e24f8f\",\n  \"clientName\": \"Acme Trading Co.\",\n  \"directorId\": \"50e0ac35-6467-42f7-8afc-81f04fadc250\",\n  \"directorName\": \"Demo Director\",\n  \"managerId\": \"522e54c3-efb6-42c5-9b7e-a060541f8e00\",\n  \"managerName\": \"Demo Manager\",\n  \"budgetHours\": 500.0,\n  \"startDate\": \"2026-08-26\",\n  \"endDate\": \"2027-02-22\",\n  \"status\": \"Active\",\n  \"activeEmployeeCount\": 2,\n  \"createdAt\": \"2026-10-25T22:06:28.3632554\",\n  \"updatedAt\": null,\n  \"isBudgetLocked\": false,\n  \"employees\": [\n    {\n      \"employeeId\": \"16bea9ad-60fc-4179-af4e-35df7f00ca22\",\n      \"fullName\": \"Demo Employee\",\n      \"userName\": \"employee\",\n      \"isActive\": true,\n      \"assignedAt\": \"2026-10-25T22:06:28.3632954\"\n    }\n  ]\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "CreateProject",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects"
+                  ]
+                },
+                "description": "You become the project's director. The `code` is generated (`PRJ-0001`, `PRJ-0002`, …) and the status starts as `Active`.\n\nGet `clientId` from **Clients/GetAllClients**, `managerId` and `employeeIds` from **Dropdowns**.\n\nRules (`400` with a clear message):\n- `clientId` must be an **active** client → *Client not found or inactive.*\n- `managerId` must be an active user with the **Manager** role, and not the director himself\n- `budgetHours` between 0.01 and 9,999,999.99\n- `endDate` is optional; if sent it can't be before `startDate`\n- dates are `yyyy-MM-dd`\n- `employeeIds` is optional; each one must be an active **Employee** (managers/directors never log hours)\n\nResponse `201 Created`: the project details (same as **GetProjectById**).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme ERP Rollout\",\n  \"description\": \"ERP rollout for Acme\",\n  \"clientId\": \"{clientId}\",\n  \"managerId\": \"{managerId}\",\n  \"budgetHours\": 500,\n  \"startDate\": \"2026-10-01\",\n  \"endDate\": \"2027-03-31\",\n  \"employeeIds\": [\n    \"{employeeId}\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateProject",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects/{projectId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects",
+                    "{projectId}"
+                  ]
+                },
+                "description": "Same rules as **CreateProject** (team and status have their own endpoints).\n\n**Budget lock:** once the project has an Approved time entry, changing `budgetHours` is refused:\n```json\n{\n  \"success\": false,\n  \"message\": \"The budget is locked because this project already has approved hours. Create a new project for a new deal.\"\n}\n```\nThe budget is the contract with the client — a new deal = a new project. Other fields (name, manager, dates…) can still change; send the same `budgetHours`.\n\nResponse: the project details.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Acme ERP Rollout\",\n  \"description\": \"ERP rollout for Acme — phase 1\",\n  \"clientId\": \"{clientId}\",\n  \"managerId\": \"{managerId}\",\n  \"budgetHours\": 500,\n  \"startDate\": \"2026-10-01\",\n  \"endDate\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "ChangeStatus",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects/{projectId}/status",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects",
+                    "{projectId}",
+                    "status"
+                  ]
+                },
+                "description": "`status`: `Active` | `OnHold` | `Completed` | `Archived`\n\nUnknown value → `400` *Invalid value for 'status'.*\n\nResponse: the project details.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"OnHold\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "AssignEmployees",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects/{projectId}/employees",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects",
+                    "{projectId}",
+                    "employees"
+                  ]
+                },
+                "description": "Adds employees to the team (send an array of ids from **Dropdowns/DropdownEmployees**).\n\n- only active users with the **Employee** role → otherwise `400` *Only active users with the Employee role can be assigned. Invalid: …*\n- an employee who is already on the team is ignored\n- an employee who was removed before is **re-activated** (same row, history kept)\n\nResponse: the project details.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeIds\": [\n    \"{employeeId}\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "RemoveEmployee",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Projects/{projectId}/employees/{employeeId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Projects",
+                    "{projectId}",
+                    "employees",
+                    "{employeeId}"
+                  ]
+                },
+                "description": "Removes an employee from the team — not a real delete: the assignment becomes `isActive: false`, so they can't log new hours here but their history stays.\n\nNot on the team → `404` *This employee is not assigned to the project.*\n\nResponse: the project details."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reports",
+          "item": [
+            {
+              "name": "Portfolio",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Reports/portfolio",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Reports",
+                    "portfolio"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Active",
+                      "description": "Active | OnHold | Completed | Archived",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All the projects you direct with their budget numbers (same fields as **ProjectSummary**), **problems first**: `Exceeded` → projected to exceed → `NearLimit` → the rest (then by usage %).\n\nOptional `status` filter: `Active` | `OnHold` | `Completed` | `Archived`.\n\nResponse:\n```json\n[\n  {\n    \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"code\": \"PRJ-0001\",\n    \"name\": \"Acme ERP Rollout\",\n    \"clientName\": \"Acme Trading Co.\",\n    \"managerName\": \"Demo Manager\",\n    \"projectStatus\": \"Active\",\n    \"budgetHours\": 500.0,\n    \"actualHours\": 15.5,\n    \"remainingHours\": 484.5,\n    \"pendingManagerHours\": 16.5,\n    \"pendingDirectorHours\": 0,\n    \"projectedRemaining\": 468.0,\n    \"usagePercent\": 3.1,\n    \"budgetStatus\": \"OnTrack\",\n    \"isProjectedToExceed\": false,\n    \"exceededBy\": 0\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "ProjectSummary",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Reports/projects/{projectId}/summary",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "summary"
+                  ]
+                },
+                "description": "Budget numbers for one project (all computed — actual hours are never stored):\n\n| Field | Meaning |\n|---|---|\n| `budgetHours` | fixed by contract |\n| `actualHours` | SUM of **Approved** hours |\n| `remainingHours` | budget − actual (can be negative) |\n| `pendingManagerHours` / `pendingDirectorHours` | hours still waiting at each level |\n| `projectedRemaining` | budget − actual − both pendings |\n| `usagePercent` | actual / budget × 100 |\n| `budgetStatus` | `OnTrack` < 80 % · `NearLimit` 80–100 % · `Exceeded` > 100 % |\n| `isProjectedToExceed` | `projectedRemaining` < 0 |\n| `exceededBy` | max(0, actual − budget) |\n\nRejected and Cancelled hours never count. Not your project → `404`.\n\nResponse:\n```json\n{\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"code\": \"PRJ-0001\",\n  \"name\": \"Acme ERP Rollout\",\n  \"clientName\": \"Acme Trading Co.\",\n  \"managerName\": \"Demo Manager\",\n  \"projectStatus\": \"Active\",\n  \"budgetHours\": 500.0,\n  \"actualHours\": 15.5,\n  \"remainingHours\": 484.5,\n  \"pendingManagerHours\": 16.5,\n  \"pendingDirectorHours\": 0,\n  \"projectedRemaining\": 468.0,\n  \"usagePercent\": 3.1,\n  \"budgetStatus\": \"OnTrack\",\n  \"isProjectedToExceed\": false,\n  \"exceededBy\": 0\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "DailyReport",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Reports/projects/{projectId}/daily",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "daily"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "groupBy",
+                      "value": "week",
+                      "description": "day | week | month",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Approved hours over time — for a burn-down chart.\n\n- `openingBalance` = approved hours **before** `from`\n- then one row per period with `hours`, `runningTotal` (opening + everything so far) and `remaining` (budget − running total)\n- **every** period in the range is listed, including empty ones (`hours: 0`), so the chart has no gaps\n\nQuery params (all optional):\n- `from` — default: project start date\n- `to` — default: today (business time zone)\n- `groupBy` — `day` (default) | `week` (weeks start on **Sunday**) | `month`. The first/last week or month is cut to `from`/`to`.\n\nErrors (`400`): `from` after `to`; more than 366 days with `groupBy=day` → use week or month; unknown `groupBy` → *The value 'year' is not valid for GroupBy.*\n\nResponse (rows shortened):\n```json\n{\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"code\": \"PRJ-0001\",\n  \"name\": \"Acme ERP Rollout\",\n  \"budgetHours\": 500.0,\n  \"from\": \"2026-10-17\",\n  \"to\": \"2026-10-26\",\n  \"groupBy\": \"Day\",\n  \"openingBalance\": 0,\n  \"periodHours\": 15.5,\n  \"closingBalance\": 15.5,\n  \"rows\": [\n    {\n      \"periodStart\": \"2026-10-19\",\n      \"periodEnd\": \"2026-10-19\",\n      \"hours\": 0,\n      \"runningTotal\": 0,\n      \"remaining\": 500.0\n    },\n    {\n      \"periodStart\": \"2026-10-20\",\n      \"periodEnd\": \"2026-10-20\",\n      \"hours\": 7.5,\n      \"runningTotal\": 7.5,\n      \"remaining\": 492.5\n    }\n  ]\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "EmployeesReport",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Reports/projects/{projectId}/employees",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "employees"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Hours per employee on the project, most approved hours first.\n\n- `approvedHours` and `sharePercent` (share of the project's approved hours in the range)\n- `pendingHours` = still waiting for manager or director\n- everyone currently on the team is listed (even with 0 h); someone who was removed but has hours in the range is listed with `isActiveOnProject: false`\n\nOptional `from` / `to` (no defaults — all time). Not your project → `404`.\n\nResponse:\n```json\n[\n  {\n    \"employeeId\": \"16bea9ad-60fc-4179-af4e-35df7f00ca22\",\n    \"employeeName\": \"Demo Employee\",\n    \"isActiveOnProject\": true,\n    \"approvedHours\": 15.5,\n    \"sharePercent\": 100.0,\n    \"pendingHours\": 16.5\n  },\n  {\n    \"employeeId\": \"56334f8e-6cde-46e6-862e-2427eb13f5ab\",\n    \"employeeName\": \"Demo Employee Two\",\n    \"isActiveOnProject\": true,\n    \"approvedHours\": 0,\n    \"sharePercent\": 0,\n    \"pendingHours\": 0\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "ReportPdf",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/Reports/projects/{projectId}/pdf",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "pdf"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "groupBy",
+                      "value": "week",
+                      "description": "day | week | month",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Downloads the project report as a **PDF** (QuestPDF): header, budget tiles + summary (all time), the hours table from **DailyReport**, and the per-employee table for the same period.\n\nSame query params and errors as **DailyReport** (`from`, `to`, `groupBy`). Not your project → `404`.\n\nResponse: `application/pdf` with `Content-Disposition: attachment; filename=PRJ-0001_report_20261001-20261031.pdf`.\n\nIn Postman use **Send → Send and Download** to save the file. In the frontend open/download the URL with the Bearer token (e.g. fetch → blob → object URL)."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "TimeEntries",
+          "item": [
+            {
+              "name": "GetPending",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/TimeEntries/pending",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "TimeEntries",
+                    "pending"
+                  ]
+                },
+                "description": "Entries waiting for **director** review (`PendingDirector`) on your projects, oldest submission first.\n\nEach entry has `budgetImpact`: what approving **this entry alone** does to the project (Budget − Approved − this entry). `wouldExceedBudget` / `exceedsBudgetBy` = *approving this puts the project X h over*.\n\n`managerApprovedBy` shows who approved it at manager level.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"dfbdf151-b195-4256-da2a-08df32e8cf98\",\n    \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"projectCode\": \"PRJ-0001\",\n    \"projectName\": \"Acme ERP Rollout\",\n    \"employeeId\": \"16bea9ad-60fc-4179-af4e-35df7f00ca22\",\n    \"employeeName\": \"Demo Employee\",\n    \"workDate\": \"2026-10-25\",\n    \"hours\": 3.0,\n    \"notes\": \"Workshop + data mapping\",\n    \"status\": \"PendingDirector\",\n    \"submittedAt\": \"2026-10-25T23:01:12.51\",\n    \"managerApprovedBy\": \"Demo Manager\",\n    \"managerApprovedAt\": \"2026-10-25T23:05:40.12\",\n    \"budgetImpact\": {\n      \"budgetHours\": 500.0,\n      \"actualHours\": 7.5,\n      \"remainingHours\": 492.5,\n      \"remainingAfterApproval\": 489.5,\n      \"wouldExceedBudget\": false,\n      \"exceedsBudgetBy\": 0\n    }\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "Approve",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/TimeEntries/{entryId}/approve",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "TimeEntries",
+                    "{entryId}",
+                    "approve"
+                  ]
+                },
+                "description": "`PendingDirector` → `Approved`. No body. A review row is saved (history).\n\nOut of your scope (not your project) → `404` *Time entry not found.*\n\nWrong status → `400`, e.g. *This entry is not waiting for manager review. It is PendingDirector.*\n\nTwo reviewers at the same moment → the second gets `400` *This entry was already reviewed.* (or the wrong-status message).\n\nResponse: the entry (same shape as **GetPending**)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reject",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/TimeEntries/{entryId}/reject",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "TimeEntries",
+                    "{entryId}",
+                    "reject"
+                  ]
+                },
+                "description": "`PendingDirector` → `Rejected`. **Comment is required** (blank → `400` *The Comment field is required.*) — the employee sees it as `rejectionComment` with `rejectedAtLevel` and can fix and resubmit the entry.\n\nOut of your scope (not your project) → `404` *Time entry not found.*\n\nWrong status → `400`, e.g. *This entry is not waiting for manager review. It is PendingDirector.*\n\nTwo reviewers at the same moment → the second gets `400` *This entry was already reviewed.* (or the wrong-status message).\n\nResponse: the entry with `\"status\": \"Rejected\"`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"comment\": \"Please list the tasks you worked on in the notes.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reopen",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/TimeEntries/{entryId}/reopen",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "TimeEntries",
+                    "{entryId}",
+                    "reopen"
+                  ]
+                },
+                "description": "Takes back an **Approved** entry: `Approved` → `Rejected`. **Comment is required.**\n\nThe hours drop out of the project's actual hours right away (and the budget unlocks if no approved hours are left). The employee sees `rejectedAtLevel: Director` + your comment, fixes it, and it goes through manager → director again.\n\nNot approved → `400` *Only approved entries can be reopened. This entry is Rejected.*\n\nAnother director's project → `404`.\n\nResponse: the entry with `\"status\": \"Rejected\"`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"comment\": \"These hours belong to PRJ-0002.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "BulkApprove",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Director/TimeEntries/bulk-approve",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Director",
+                    "TimeEntries",
+                    "bulk-approve"
+                  ]
+                },
+                "description": "Approves many entries at once — **each one on its own**: a failure doesn't stop the others. Duplicate ids are ignored. Up to 200 ids.\n\nResponse lists what was approved and what failed with the reason:\n```json\n{\n  \"approved\": [\n    \"dfbdf151-b195-4256-da2a-08df32e8cf98\"\n  ],\n  \"failed\": [\n    {\n      \"id\": \"c72f1b44-2b4b-4682-17d1-08df32eb3d3a\",\n      \"reason\": \"This entry is not waiting for manager review. It is PendingDirector.\"\n    },\n    {\n      \"id\": \"5d0a5c33-0000-0000-0000-000000000000\",\n      \"reason\": \"Time entry not found.\"\n    }\n  ]\n}\n```",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ids\": [\n    \"{entryId1}\",\n    \"{entryId2}\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Director permissions — log in as **director** (or **director2**) first.\n\nA director only sees and changes the projects **he directs**; anything else returns `404`. Clients are shared by all directors."
+    },
+    {
+      "name": "Manager",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{burl}}/api/Manager/Dashboards",
+              "host": [
+                "{{burl}}"
+              ],
+              "path": [
+                "api",
+                "Manager",
+                "Dashboards"
+              ]
+            },
+            "description": "For the projects you manage:\n\n- `pendingReview.count` / `hours` / `oldestSubmittedAt` — your review queue (null date when empty)\n- `activeProjectCount`\n- `budgetAlerts` over your non-archived projects, one bucket per project (worst first): `exceededCount`, `projectedToExceedCount` (pending hours would push it over), `nearLimitCount` (80–100 %)\n\nThe queue is the same entries as **TimeEntries/GetPending**.\n\nCheap counts — the frontend **polls** this (e.g. every 30–60 s); there is no SignalR.\n\nResponse:\n```json\n{\n  \"pendingReview\": {\n    \"count\": 3,\n    \"hours\": 16.5,\n    \"oldestSubmittedAt\": \"2026-10-25T22:39:20.65\"\n  },\n  \"activeProjectCount\": 1,\n  \"budgetAlerts\": {\n    \"exceededCount\": 0,\n    \"projectedToExceedCount\": 0,\n    \"nearLimitCount\": 0\n  }\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Projects",
+          "item": [
+            {
+              "name": "GetMyProjects",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Projects",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Projects"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Active",
+                      "description": "Active | OnHold | Completed | Archived",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "PRJ",
+                      "description": "project code or name",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Only the projects **you manage** (read-only).\n\nSame filters and response as the director's **GetMyProjects**."
+              },
+              "response": []
+            },
+            {
+              "name": "GetProjectById",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Projects/{projectId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Projects",
+                    "{projectId}"
+                  ]
+                },
+                "description": "Project details with the team. A project you don't manage → `404`."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reports",
+          "item": [
+            {
+              "name": "ProjectSummary",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Reports/projects/{projectId}/summary",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "summary"
+                  ]
+                },
+                "description": "Budget numbers for one project (all computed — actual hours are never stored):\n\n| Field | Meaning |\n|---|---|\n| `budgetHours` | fixed by contract |\n| `actualHours` | SUM of **Approved** hours |\n| `remainingHours` | budget − actual (can be negative) |\n| `pendingManagerHours` / `pendingDirectorHours` | hours still waiting at each level |\n| `projectedRemaining` | budget − actual − both pendings |\n| `usagePercent` | actual / budget × 100 |\n| `budgetStatus` | `OnTrack` < 80 % · `NearLimit` 80–100 % · `Exceeded` > 100 % |\n| `isProjectedToExceed` | `projectedRemaining` < 0 |\n| `exceededBy` | max(0, actual − budget) |\n\nRejected and Cancelled hours never count. Not your project → `404`.\n\nResponse:\n```json\n{\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"code\": \"PRJ-0001\",\n  \"name\": \"Acme ERP Rollout\",\n  \"clientName\": \"Acme Trading Co.\",\n  \"managerName\": \"Demo Manager\",\n  \"projectStatus\": \"Active\",\n  \"budgetHours\": 500.0,\n  \"actualHours\": 15.5,\n  \"remainingHours\": 484.5,\n  \"pendingManagerHours\": 16.5,\n  \"pendingDirectorHours\": 0,\n  \"projectedRemaining\": 468.0,\n  \"usagePercent\": 3.1,\n  \"budgetStatus\": \"OnTrack\",\n  \"isProjectedToExceed\": false,\n  \"exceededBy\": 0\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "DailyReport",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Reports/projects/{projectId}/daily",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "daily"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "groupBy",
+                      "value": "week",
+                      "description": "day | week | month",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Approved hours over time — for a burn-down chart.\n\n- `openingBalance` = approved hours **before** `from`\n- then one row per period with `hours`, `runningTotal` (opening + everything so far) and `remaining` (budget − running total)\n- **every** period in the range is listed, including empty ones (`hours: 0`), so the chart has no gaps\n\nQuery params (all optional):\n- `from` — default: project start date\n- `to` — default: today (business time zone)\n- `groupBy` — `day` (default) | `week` (weeks start on **Sunday**) | `month`. The first/last week or month is cut to `from`/`to`.\n\nErrors (`400`): `from` after `to`; more than 366 days with `groupBy=day` → use week or month; unknown `groupBy` → *The value 'year' is not valid for GroupBy.*\n\nResponse (rows shortened):\n```json\n{\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"code\": \"PRJ-0001\",\n  \"name\": \"Acme ERP Rollout\",\n  \"budgetHours\": 500.0,\n  \"from\": \"2026-10-17\",\n  \"to\": \"2026-10-26\",\n  \"groupBy\": \"Day\",\n  \"openingBalance\": 0,\n  \"periodHours\": 15.5,\n  \"closingBalance\": 15.5,\n  \"rows\": [\n    {\n      \"periodStart\": \"2026-10-19\",\n      \"periodEnd\": \"2026-10-19\",\n      \"hours\": 0,\n      \"runningTotal\": 0,\n      \"remaining\": 500.0\n    },\n    {\n      \"periodStart\": \"2026-10-20\",\n      \"periodEnd\": \"2026-10-20\",\n      \"hours\": 7.5,\n      \"runningTotal\": 7.5,\n      \"remaining\": 492.5\n    }\n  ]\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "EmployeesReport",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Reports/projects/{projectId}/employees",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "employees"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Hours per employee on the project, most approved hours first.\n\n- `approvedHours` and `sharePercent` (share of the project's approved hours in the range)\n- `pendingHours` = still waiting for manager or director\n- everyone currently on the team is listed (even with 0 h); someone who was removed but has hours in the range is listed with `isActiveOnProject: false`\n\nOptional `from` / `to` (no defaults — all time). Not your project → `404`.\n\nResponse:\n```json\n[\n  {\n    \"employeeId\": \"16bea9ad-60fc-4179-af4e-35df7f00ca22\",\n    \"employeeName\": \"Demo Employee\",\n    \"isActiveOnProject\": true,\n    \"approvedHours\": 15.5,\n    \"sharePercent\": 100.0,\n    \"pendingHours\": 16.5\n  },\n  {\n    \"employeeId\": \"56334f8e-6cde-46e6-862e-2427eb13f5ab\",\n    \"employeeName\": \"Demo Employee Two\",\n    \"isActiveOnProject\": true,\n    \"approvedHours\": 0,\n    \"sharePercent\": 0,\n    \"pendingHours\": 0\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "ReportPdf",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/Reports/projects/{projectId}/pdf",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "Reports",
+                    "projects",
+                    "{projectId}",
+                    "pdf"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "groupBy",
+                      "value": "week",
+                      "description": "day | week | month",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Downloads the project report as a **PDF** (QuestPDF): header, budget tiles + summary (all time), the hours table from **DailyReport**, and the per-employee table for the same period.\n\nSame query params and errors as **DailyReport** (`from`, `to`, `groupBy`). Not your project → `404`.\n\nResponse: `application/pdf` with `Content-Disposition: attachment; filename=PRJ-0001_report_20261001-20261031.pdf`.\n\nIn Postman use **Send → Send and Download** to save the file. In the frontend open/download the URL with the Bearer token (e.g. fetch → blob → object URL)."
+              },
+              "response": []
+            }
+          ],
+          "description": "Same reports as the director's, for the projects you manage (no portfolio)."
+        },
+        {
+          "name": "TimeEntries",
+          "item": [
+            {
+              "name": "GetPending",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/TimeEntries/pending",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "TimeEntries",
+                    "pending"
+                  ]
+                },
+                "description": "Entries waiting for **manager** review (`PendingManager`) on your projects, oldest submission first.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"dfbdf151-b195-4256-da2a-08df32e8cf98\",\n    \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"projectCode\": \"PRJ-0001\",\n    \"projectName\": \"Acme ERP Rollout\",\n    \"employeeId\": \"16bea9ad-60fc-4179-af4e-35df7f00ca22\",\n    \"employeeName\": \"Demo Employee\",\n    \"workDate\": \"2026-10-25\",\n    \"hours\": 3.0,\n    \"notes\": \"Workshop + data mapping\",\n    \"status\": \"PendingManager\",\n    \"submittedAt\": \"2026-10-25T23:01:12.51\",\n    \"managerApprovedBy\": null,\n    \"managerApprovedAt\": null,\n    \"budgetImpact\": null\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "Approve",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/TimeEntries/{entryId}/approve",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "TimeEntries",
+                    "{entryId}",
+                    "approve"
+                  ]
+                },
+                "description": "`PendingManager` → `PendingDirector`. No body. A review row is saved (history).\n\nOut of your scope (not your project) → `404` *Time entry not found.*\n\nWrong status → `400`, e.g. *This entry is not waiting for manager review. It is PendingDirector.*\n\nTwo reviewers at the same moment → the second gets `400` *This entry was already reviewed.* (or the wrong-status message).\n\nResponse: the entry (same shape as **GetPending**)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reject",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/TimeEntries/{entryId}/reject",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "TimeEntries",
+                    "{entryId}",
+                    "reject"
+                  ]
+                },
+                "description": "`PendingManager` → `Rejected`. **Comment is required** (blank → `400` *The Comment field is required.*) — the employee sees it as `rejectionComment` with `rejectedAtLevel` and can fix and resubmit the entry.\n\nOut of your scope (not your project) → `404` *Time entry not found.*\n\nWrong status → `400`, e.g. *This entry is not waiting for manager review. It is PendingDirector.*\n\nTwo reviewers at the same moment → the second gets `400` *This entry was already reviewed.* (or the wrong-status message).\n\nResponse: the entry with `\"status\": \"Rejected\"`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"comment\": \"Please list the tasks you worked on in the notes.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "BulkApprove",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Manager/TimeEntries/bulk-approve",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Manager",
+                    "TimeEntries",
+                    "bulk-approve"
+                  ]
+                },
+                "description": "Approves many entries at once — **each one on its own**: a failure doesn't stop the others. Duplicate ids are ignored. Up to 200 ids.\n\nResponse lists what was approved and what failed with the reason:\n```json\n{\n  \"approved\": [\n    \"dfbdf151-b195-4256-da2a-08df32e8cf98\"\n  ],\n  \"failed\": [\n    {\n      \"id\": \"c72f1b44-2b4b-4682-17d1-08df32eb3d3a\",\n      \"reason\": \"This entry is not waiting for manager review. It is PendingDirector.\"\n    },\n    {\n      \"id\": \"5d0a5c33-0000-0000-0000-000000000000\",\n      \"reason\": \"Time entry not found.\"\n    }\n  ]\n}\n```",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ids\": [\n    \"{entryId1}\",\n    \"{entryId2}\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Manager permissions — log in as **manager** (or **manager2**) first."
+    },
+    {
+      "name": "Employee",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{burl}}/api/Employee/Dashboards",
+              "host": [
+                "{{burl}}"
+              ],
+              "path": [
+                "api",
+                "Employee",
+                "Dashboards"
+              ]
+            },
+            "description": "Your numbers at a glance (\"today\" and the week use the business time zone; weeks start on Sunday):\n\n- `hoursToday`, `dailyLimit`, `remainingToday` — pending + approved hours for today vs the 12 h cap\n- `hoursThisWeek` — pending + approved since `weekStart`\n- `approvedHoursThisMonth`\n- `pendingCount` — waiting for manager or director\n- `rejectedCount` — **needs your attention**: fix and resubmit (GetMyEntries with `status=Rejected`)\n- `activeProjectCount` — projects you can log on\n\nCheap counts — the frontend **polls** this (e.g. every 30–60 s); there is no SignalR.\n\nResponse:\n```json\n{\n  \"today\": \"2026-10-26\",\n  \"weekStart\": \"2026-10-25\",\n  \"hoursToday\": 6.0,\n  \"dailyLimit\": 12,\n  \"remainingToday\": 6.0,\n  \"hoursThisWeek\": 6.0,\n  \"approvedHoursThisMonth\": 15.5,\n  \"pendingCount\": 3,\n  \"rejectedCount\": 0,\n  \"activeProjectCount\": 1\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Projects",
+          "item": [
+            {
+              "name": "DropdownMyProjects",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/Projects",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "Projects"
+                  ]
+                },
+                "description": "The project dropdown for logging hours: **Active** projects you are **currently assigned** to. Send the selected `id` as `projectId`.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"code\": \"PRJ-0001\",\n    \"name\": \"Acme ERP Rollout\"\n  }\n]\n```"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "TimeEntries",
+          "item": [
+            {
+              "name": "GetMyEntries",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Rejected",
+                      "description": "PendingManager | PendingDirector | Approved | Rejected | Cancelled",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-10-01",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-31",
+                      "description": "yyyy-MM-dd",
+                      "disabled": true
+                    },
+                    {
+                      "key": "projectId",
+                      "value": "",
+                      "description": "project id",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Your entries, newest day first. **Cancelled** entries are hidden unless you ask for `status=Cancelled`.\n\nA **Rejected** entry also has `rejectedAtLevel` (Manager / Director) and `rejectionComment` — show them so the employee knows what to fix.\n\nOptional filters: `status`, `from`, `to` (`yyyy-MM-dd`), `projectId`. `from` after `to` → `400`.\n\nStatuses: `PendingManager` → `PendingDirector` → `Approved`; `Rejected`; `Cancelled`.\n\nResponse:\n```json\n[\n  {\n    \"id\": \"dfbdf151-b195-4256-da2a-08df32e8cf98\",\n    \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n    \"projectCode\": \"PRJ-0001\",\n    \"projectName\": \"Acme ERP Rollout\",\n    \"workDate\": \"2026-10-26\",\n    \"hours\": 6.0,\n    \"notes\": \"Requirements workshop; data mapping\",\n    \"status\": \"PendingManager\",\n    \"submittedAt\": \"2026-10-25T22:39:46.175057\",\n    \"rejectedAtLevel\": null,\n    \"rejectionComment\": null,\n    \"createdAt\": \"2026-10-25T22:39:46.1813158\",\n    \"updatedAt\": null\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "GetEntryById",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries/{entryId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries",
+                    "{entryId}"
+                  ]
+                },
+                "description": "One of **your** entries. Someone else's entry → `404` *Time entry not found.*\n\nResponse:\n```json\n{\n  \"id\": \"dfbdf151-b195-4256-da2a-08df32e8cf98\",\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"projectCode\": \"PRJ-0001\",\n  \"projectName\": \"Acme ERP Rollout\",\n  \"workDate\": \"2026-10-26\",\n  \"hours\": 6.0,\n  \"notes\": \"Requirements workshop; data mapping\",\n  \"status\": \"PendingManager\",\n  \"submittedAt\": \"2026-10-25T22:39:46.175057\",\n  \"rejectedAtLevel\": null,\n  \"rejectionComment\": null,\n  \"createdAt\": \"2026-10-25T22:39:46.1813158\",\n  \"updatedAt\": null\n}\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "GetEntryHistory",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries/{entryId}/history",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries",
+                    "{entryId}",
+                    "history"
+                  ]
+                },
+                "description": "Who approved / rejected / reopened the entry, with comments — oldest first.\n\nSomeone else's entry → `404`.\n\nResponse:\n```json\n[\n  {\n    \"level\": \"Manager\",\n    \"decision\": \"Rejected\",\n    \"comment\": \"Please add the task names\",\n    \"reviewerName\": \"Demo Manager\",\n    \"reviewedAt\": \"2026-10-25T23:02:10.4\"\n  },\n  {\n    \"level\": \"Manager\",\n    \"decision\": \"Approved\",\n    \"comment\": null,\n    \"reviewerName\": \"Demo Manager\",\n    \"reviewedAt\": \"2026-10-25T23:05:40.12\"\n  },\n  {\n    \"level\": \"Director\",\n    \"decision\": \"Approved\",\n    \"comment\": null,\n    \"reviewerName\": \"Demo Director\",\n    \"reviewedAt\": \"2026-10-25T23:07:02.9\"\n  },\n  {\n    \"level\": \"Director\",\n    \"decision\": \"Reopened\",\n    \"comment\": \"Hours belong to PRJ-0002\",\n    \"reviewerName\": \"Demo Director\",\n    \"reviewedAt\": \"2026-10-25T23:09:31.5\"\n  }\n]\n```"
+              },
+              "response": []
+            },
+            {
+              "name": "SubmitEntry",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries"
+                  ]
+                },
+                "description": "Logs hours for one project on one day. The entry starts as **PendingManager** (waiting for the project's manager).\n\nRules (`400` unless noted):\n- `projectId` must be one of **DropdownMyProjects** — not assigned / removed → `404` *Project not found or you are not assigned to it.*; project not Active → *Hours can only be logged on active projects. PRJ-0003 is OnHold.*\n- `workDate` (`yyyy-MM-dd`): not in the future and not older than **30 days** (\"today\" is in the business time zone, Asia/Riyadh)\n- `hours`: more than 0, at most 12, max 2 decimals\n- **one entry per project per day** → *You already have an entry for PRJ-0001 on 2026-10-26. Edit that entry instead.* (a Rejected entry still holds its day — fix and resubmit it; a Cancelled one frees the day)\n- **max 12 h per day across all projects** (Pending + Approved count, Rejected/Cancelled don't) → *Daily limit is 12 h. You already have 8 h on 2026-10-26, so you can add at most 4 h.*\n- `notes`: optional, up to 1000 characters — put all the day's tasks for this project here\n\nResponse `201 Created`:\n```json\n{\n  \"id\": \"dfbdf151-b195-4256-da2a-08df32e8cf98\",\n  \"projectId\": \"840dd1ee-65b5-498d-1427-08df32e437f6\",\n  \"projectCode\": \"PRJ-0001\",\n  \"projectName\": \"Acme ERP Rollout\",\n  \"workDate\": \"2026-10-26\",\n  \"hours\": 6.0,\n  \"notes\": \"Requirements workshop; data mapping\",\n  \"status\": \"PendingManager\",\n  \"submittedAt\": \"2026-10-25T22:39:46.175057\",\n  \"rejectedAtLevel\": null,\n  \"rejectionComment\": null,\n  \"createdAt\": \"2026-10-25T22:39:46.1813158\",\n  \"updatedAt\": null\n}\n```",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"projectId\": \"{projectId}\",\n  \"workDate\": \"2026-10-26\",\n  \"hours\": 6,\n  \"notes\": \"Requirements workshop; data mapping\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateEntry",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries/{entryId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries",
+                    "{entryId}"
+                  ]
+                },
+                "description": "Edit is allowed only while the entry is **PendingManager** or **Rejected** → otherwise `400` *Only entries waiting for the manager or rejected can be edited. This entry is Approved.*\n\nEditing a **Rejected** entry **resubmits** it: status goes back to `PendingManager` and `submittedAt` is updated.\n\nSame rules as **SubmitEntry** (the entry itself doesn't count against the daily limit). The 30-day window is only checked if you change the date, so an old rejected entry can still be fixed.\n\nIf the manager reviewed it at the same moment → `400` *This entry was just changed (probably reviewed). Reload it and try again.*\n\nResponse: the updated entry.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"projectId\": \"{projectId}\",\n  \"workDate\": \"2026-10-26\",\n  \"hours\": 7,\n  \"notes\": \"Requirements workshop; data mapping; follow-up call\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "CancelEntry",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{burl}}/api/Employee/TimeEntries/{entryId}",
+                  "host": [
+                    "{{burl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "Employee",
+                    "TimeEntries",
+                    "{entryId}"
+                  ]
+                },
+                "description": "Withdraws the entry — only while it is still **PendingManager** → otherwise `400` *Only entries still waiting for the manager can be cancelled. This entry is Rejected.*\n\nNot a real delete: status becomes `Cancelled`, and the day is free again for that project.\n\nResponse: the entry with `\"status\": \"Cancelled\"`."
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Employee permissions — log in as **employee** (or **employee2**, **employee3**) first."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  }
+}

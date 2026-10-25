@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Test framework -->
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+
+    <!-- Mocking -->
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <!-- Makes EF Core async operators (FirstOrDefaultAsync, AnyAsync, CountAsync)
+         work on in-memory lists inside tests -->
+    <PackageReference Include="MockQueryable.Moq" Version="10.0.8" />
+
+    <!-- Readable assertions -->
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+
+    <!-- Code coverage (run: dotnet test with the collect option "XPlat Code Coverage") -->
+    <PackageReference Include="coverlet.collector" Version="10.0.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TimeSheet.BLL\TimeSheet.BLL.csproj" />
+    <ProjectReference Include="..\TimeSheet.DAL\TimeSheet.DAL.csproj" />
+    <ProjectReference Include="..\TimeSheet.PL\TimeSheet.PL.csproj" />
+  </ItemGroup>
+
+</Project>
