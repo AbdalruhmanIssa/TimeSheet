@@ -83,12 +83,17 @@ namespace TimeSheet.BLL.Services.Classes
 
             // Serializable: two directors creating at once must not get the same code.
             // (The unique index on Code is the safety net; a deadlock is retried by EF.)
+            var name = request.Name.Trim();
+
             var projectId = await _uow.ExecuteInTransactionAsync(async () =>
             {
+                // Inside the serializable transaction: two creates with the same name can't both pass.
+                await EnsureNameIsFreeAsync(name, excludeProjectId: null);
+
                 var project = new Project
                 {
                     Code = await NextCodeAsync(),
-                    Name = request.Name.Trim(),
+                    Name = name,
                     Description = NullIfBlank(request.Description),
                     ClientId = clientId,
                     DirectorId = directorId,
@@ -119,6 +124,9 @@ namespace TimeSheet.BLL.Services.Classes
 
             EnsureValidDates(startDate, request.EndDate);
 
+            var name = request.Name.Trim();
+            await EnsureNameIsFreeAsync(name, excludeProjectId: projectId);
+
             if (clientId != project.ClientId)
                 await EnsureClientIsActiveAsync(clientId);
 
@@ -131,7 +139,7 @@ namespace TimeSheet.BLL.Services.Classes
                 throw new BadRequestException(
                     "The budget is locked because this project already has approved hours. Create a new project for a new deal.");
 
-            project.Name = request.Name.Trim();
+            project.Name = name;
             project.Description = NullIfBlank(request.Description);
             project.ClientId = clientId;
             project.ManagerId = request.ManagerId;
@@ -178,19 +186,33 @@ namespace TimeSheet.BLL.Services.Classes
                 .Where(a => a.ProjectId == projectId && employeeIds.Contains(a.EmployeeId))
                 .ToListAsync();
 
+            // Someone already on the team -> refuse the whole request (nothing is saved).
+            var alreadyAssignedIds = existing.Where(a => a.IsActive).Select(a => a.EmployeeId).ToList();
+            if (alreadyAssignedIds.Count > 0)
+            {
+                var names = await _uow.Repo<ApplicationUser>().Query()
+                    .Where(u => alreadyAssignedIds.Contains(u.Id))
+                    .OrderBy(u => u.FullName)
+                    .Select(u => u.FullName)
+                    .ToListAsync();
+
+                throw new BadRequestException(
+                    $"Already assigned to this project: {string.Join(", ", names)}. Remove them from the list and try again.");
+            }
+
             foreach (var employeeId in employeeIds)
             {
-                var assignment = existing.FirstOrDefault(a => a.EmployeeId == employeeId);
+                var removed = existing.FirstOrDefault(a => a.EmployeeId == employeeId);
 
-                if (assignment is null)
+                if (removed is null)
                     await _uow.Repo<ProjectAssignment>().AddAsync(new ProjectAssignment
                     {
                         ProjectId = projectId,
                         EmployeeId = employeeId,
                         IsActive = true
                     });
-                else if (!assignment.IsActive)
-                    assignment.IsActive = true; // re-assign keeps the same row (unique index)
+                else
+                    removed.IsActive = true; // re-assigning a removed employee keeps the same row (unique index)
             }
 
             await _uow.SaveChangesAsync();
@@ -219,6 +241,19 @@ namespace TimeSheet.BLL.Services.Classes
         {
             if (endDate is { } end && end < startDate)
                 throw new BadRequestException("End date cannot be before the start date.");
+        }
+
+        // Project names are unique across the system (any director, any status), so the
+        // same project can't be created twice. The unique index on Name is the safety net.
+        private async Task EnsureNameIsFreeAsync(string name, Guid? excludeProjectId)
+        {
+            var existingCode = await _uow.Repo<Project>().Query()
+                .Where(p => p.Name == name && (excludeProjectId == null || p.Id != excludeProjectId))
+                .Select(p => p.Code)
+                .FirstOrDefaultAsync();
+
+            if (existingCode is not null)
+                throw new BadRequestException($"A project named '{name}' already exists ({existingCode}). Choose a different name.");
         }
 
         private async Task EnsureClientIsActiveAsync(Guid clientId)

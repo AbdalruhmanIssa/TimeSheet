@@ -37,7 +37,8 @@ All tables except users inherit `BaseEntity` (`Guid Id`, `CreatedAt`, `UpdatedAt
 | Column | Rule |
 |---|---|
 | `Code` | unique, auto-generated (`PRJ-0007`) |
-| `Name`, `Description` | |
+| `Name` | nvarchar(200), required, **unique** (across all directors and statuses; case-insensitive) |
+| `Description` | |
 | `ClientId` | FK → Clients, Restrict |
 | `DirectorId` | FK → Users, Restrict |
 | `ManagerId` | FK → Users, Restrict, exactly one manager |
@@ -56,6 +57,7 @@ Actual hours are **never stored** — always computed as SUM of Approved entries
 | `IsActive` | removing an employee sets false; history stays |
 
 Unique index `(ProjectId, EmployeeId)`.
+Assigning an employee who is already active on the team is **rejected** (the whole request, naming who); a removed employee can be assigned again (same row is re-activated).
 
 ### TimeEntries
 | Column | Rule |
@@ -151,7 +153,7 @@ Director's pending list shows each entry's budget impact ("approving this puts t
 Filters: `from`, `to`, `groupBy = day | week | month` (week starts Sunday).
 
 1. **Project summary** — the budget fields above.
-2. **Daily report** — opening balance row (approved before `from`), then per day: hours, running total, remaining.
+2. **Daily report** — opening balance row (approved before `from`), then per day: hours, running total, remaining. Only days (weeks / months) with approved hours are listed; days nobody worked are left out.
 3. **Per-employee breakdown** — hours and share per employee.
 4. **Portfolio** (director) — all his projects, Exceeded / projected-to-exceed first.
 5. **PDF export** — QuestPDF.

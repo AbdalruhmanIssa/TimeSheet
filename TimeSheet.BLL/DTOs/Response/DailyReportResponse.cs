@@ -23,7 +23,7 @@ namespace TimeSheet.BLL.DTOs.Response
         // OpeningBalance + PeriodHours.
         public decimal ClosingBalance { get; set; }
 
-        // Every period in the range, including empty ones (so charts have no gaps).
+        // Only the periods that have approved hours (days nobody worked are left out).
         public List<DailyReportRow> Rows { get; set; } = new();
     }
 

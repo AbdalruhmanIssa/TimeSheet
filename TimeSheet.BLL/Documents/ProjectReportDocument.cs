@@ -158,6 +158,13 @@ namespace TimeSheet.BLL.Documents
                         $"In period: {Hours(d.PeriodHours)}   \u00B7   Closing balance: {Hours(d.ClosingBalance)}")
                     .FontColor(Muted);
 
+                // Rows only exist for periods with approved hours.
+                if (d.Rows.Count == 0)
+                {
+                    col.Item().PaddingTop(6).Text("No approved hours in this period.").FontColor(Muted);
+                    return;
+                }
+
                 col.Item().PaddingTop(6).Table(table =>
                 {
                     table.ColumnsDefinition(c =>

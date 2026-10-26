@@ -25,6 +25,9 @@ namespace TimeSheet.DAL.Data.Configs
                 .IsRequired()
                 .HasMaxLength(200);
 
+            // One project per name (checked in ProjectService with a clear message; this is the safety net).
+            builder.HasIndex(p => p.Name).IsUnique();
+
             builder.Property(p => p.Description).HasMaxLength(2000);
 
             builder.Property(p => p.BudgetHours).HasPrecision(9, 2);

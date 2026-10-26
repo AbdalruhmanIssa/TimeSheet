@@ -160,6 +160,11 @@ namespace TimeSheet.BLL.Services.Classes
             foreach (var (start, end) in Periods(from, to, filter.GroupBy))
             {
                 var hours = hoursPerDay.Where(d => d.Key >= start && d.Key <= end).Sum(d => d.Value);
+
+                // Only periods where someone actually worked (has approved hours).
+                if (hours == 0)
+                    continue;
+
                 running += hours;
 
                 report.Rows.Add(new DailyReportRow

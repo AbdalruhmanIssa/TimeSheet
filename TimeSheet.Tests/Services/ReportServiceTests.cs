@@ -150,7 +150,7 @@ namespace TimeSheet.Tests.Services
         // ---------------------------------------------------------------- Daily
 
         [Fact]
-        public async Task GetDailyReportAsync_ByDay_OpeningBalanceThenEveryDay()
+        public async Task GetDailyReportAsync_ByDay_OpeningBalanceThenOnlyDaysWithApprovedHours()
         {
             Add(_project, "emp-1", "2026-10-01", 5, TimeEntryStatus.Approved);   // before range
             Add(_project, "emp-2", "2026-10-02", 3, TimeEntryStatus.Approved);   // before range
@@ -163,10 +163,11 @@ namespace TimeSheet.Tests.Services
                 Filter("2026-10-03", "2026-10-06"));
 
             report.OpeningBalance.Should().Be(8);
-            report.Rows.Select(r => r.PeriodStart).Should().Equal(D("2026-10-03"), D("2026-10-04"), D("2026-10-05"), D("2026-10-06"));
-            report.Rows.Select(r => r.Hours).Should().Equal(2m, 0m, 4m, 0m);
-            report.Rows.Select(r => r.RunningTotal).Should().Equal(10m, 10m, 14m, 14m);
-            report.Rows.Select(r => r.Remaining).Should().Equal(90m, 90m, 86m, 86m);
+            // 10-04 (only pending) and 10-06 (nothing) are left out.
+            report.Rows.Select(r => r.PeriodStart).Should().Equal(D("2026-10-03"), D("2026-10-05"));
+            report.Rows.Select(r => r.Hours).Should().Equal(2m, 4m);
+            report.Rows.Select(r => r.RunningTotal).Should().Equal(10m, 14m);
+            report.Rows.Select(r => r.Remaining).Should().Equal(90m, 86m);
             report.PeriodHours.Should().Be(6);
             report.ClosingBalance.Should().Be(14);
         }
@@ -174,12 +175,29 @@ namespace TimeSheet.Tests.Services
         [Fact]
         public async Task GetDailyReportAsync_NoDates_RunsFromProjectStartToBusinessToday()
         {
+            Add(_project, "emp-1", "2026-10-27", 3, TimeEntryStatus.Approved); // today in Riyadh
+
             var report = await _sut.GetDailyReportAsync(Director, AppRoles.Director, _project.Id, new ReportFilterRequest());
 
             report.From.Should().Be(D("2026-10-01"));
             report.To.Should().Be(D("2026-10-27")); // today in Riyadh, although UTC is still the 26th
-            report.Rows.Should().HaveCount(27);
+            report.Rows.Select(r => r.PeriodStart).Should().Equal(D("2026-10-27"));
             report.OpeningBalance.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task GetDailyReportAsync_NoApprovedHoursInRange_HasNoRows_ButKeepsTheBalances()
+        {
+            Add(_project, "emp-1", "2026-10-01", 5, TimeEntryStatus.Approved);        // before range
+            Add(_project, "emp-1", "2026-10-10", 4, TimeEntryStatus.PendingManager);  // not approved
+
+            var report = await _sut.GetDailyReportAsync(Director, AppRoles.Director, _project.Id,
+                Filter("2026-10-05", "2026-10-20"));
+
+            report.Rows.Should().BeEmpty();
+            report.OpeningBalance.Should().Be(5);
+            report.PeriodHours.Should().Be(0);
+            report.ClosingBalance.Should().Be(5);
         }
 
         [Fact]
@@ -194,12 +212,12 @@ namespace TimeSheet.Tests.Services
             var report = await _sut.GetDailyReportAsync(Director, AppRoles.Director, _project.Id,
                 Filter("2026-10-01", "2026-10-20", ReportGroupBy.Week));
 
+            // The week of 10-11 has no hours, so it is left out.
             report.Rows.Select(r => (r.PeriodStart, r.PeriodEnd)).Should().Equal(
                 (D("2026-10-01"), D("2026-10-03")),
                 (D("2026-10-04"), D("2026-10-10")),
-                (D("2026-10-11"), D("2026-10-17")),
                 (D("2026-10-18"), D("2026-10-20")));
-            report.Rows.Select(r => r.Hours).Should().Equal(4m, 5m, 0m, 1m);
+            report.Rows.Select(r => r.Hours).Should().Equal(4m, 5m, 1m);
             report.Rows.Last().RunningTotal.Should().Be(10);
         }
 
@@ -232,13 +250,14 @@ namespace TimeSheet.Tests.Services
         public async Task GetDailyReportAsync_ByDay_RangeTooLong_ThrowsBadRequest_ButByWeekIsFine()
         {
             var tooLong = Filter("2025-01-01", "2026-01-02"); // 367 days
+            Add(_project, "emp-1", "2025-06-01", 2, TimeEntryStatus.Approved);
 
             var act = () => _sut.GetDailyReportAsync(Director, AppRoles.Director, _project.Id, tooLong);
             await act.Should().ThrowAsync<BadRequestException>().WithMessage("*Use groupBy=week or month*");
 
             tooLong.GroupBy = ReportGroupBy.Week;
             var report = await _sut.GetDailyReportAsync(Director, AppRoles.Director, _project.Id, tooLong);
-            report.Rows.Should().NotBeEmpty();
+            report.Rows.Should().ContainSingle(r => r.Hours == 2);
         }
 
         [Fact]

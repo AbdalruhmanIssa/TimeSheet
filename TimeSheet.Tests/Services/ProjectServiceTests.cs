@@ -281,18 +281,111 @@ namespace TimeSheet.Tests.Services
         // ---------------------------------------------------------------- Assignments
 
         [Fact]
-        public async Task AssignEmployeesAsync_AddsNew_ReactivatesRemoved_IgnoresActive()
+        public async Task AssignEmployeesAsync_RemovedEmployee_IsReactivated_OnTheSameRow()
         {
             var project = AddProject("PRJ-0001", employeeIds: new[] { Employee1 });
             var removed = AddAssignment(project, Employee2, isActive: false);
 
             var result = await _sut.AssignEmployeesAsync(DirectorId, project.Id,
-                new AssignEmployeesRequest { EmployeeIds = new() { Employee1, Employee2 } });
+                new AssignEmployeesRequest { EmployeeIds = new() { Employee2 } });
 
             removed.IsActive.Should().BeTrue();
-            project.Assignments.Should().HaveCount(2); // no duplicate row for Employee1
+            project.Assignments.Should().HaveCount(2);
             result.ActiveEmployeeCount.Should().Be(2);
             _assignmentRepo.Verify(r => r.AddAsync(It.IsAny<ProjectAssignment>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AssignEmployeesAsync_AlreadyAssigned_IsRejected_AndNothingIsSaved()
+        {
+            var project = AddProject("PRJ-0001", employeeIds: new[] { Employee1 });
+            var removed = AddAssignment(project, Employee2, isActive: false);
+
+            // Employee1 is on the team; Employee2 alone would be fine — the whole request is refused.
+            var act = () => _sut.AssignEmployeesAsync(DirectorId, project.Id,
+                new AssignEmployeesRequest { EmployeeIds = new() { Employee1, Employee2 } });
+
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("Already assigned to this project: Eve Employee. Remove them from the list and try again.");
+            removed.IsActive.Should().BeFalse();
+            _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AssignEmployeesAsync_SeveralAlreadyAssigned_NamesThemAll()
+        {
+            var project = AddProject("PRJ-0001", employeeIds: new[] { Employee1, Employee2 });
+
+            var act = () => _sut.AssignEmployeesAsync(DirectorId, project.Id,
+                new AssignEmployeesRequest { EmployeeIds = new() { Employee1, Employee2 } });
+
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("Already assigned to this project: Adam Employee, Eve Employee.*");
+        }
+
+        [Fact]
+        public async Task AssignEmployeesAsync_SameEmployeeOnAnotherProject_IsFine()
+        {
+            AddProject("PRJ-0001", employeeIds: new[] { Employee1 });
+            var other = AddProject("PRJ-0002");
+
+            var result = await _sut.AssignEmployeesAsync(DirectorId, other.Id,
+                new AssignEmployeesRequest { EmployeeIds = new() { Employee1 } });
+
+            result.Employees.Should().ContainSingle(e => e.EmployeeId == Employee1 && e.IsActive);
+        }
+
+        // ---------------------------------------------------------------- Unique name
+
+        [Fact]
+        public async Task CreateAsync_NameAlreadyUsed_IsRejected()
+        {
+            AddProject("PRJ-0001").Name = "ERP Rollout";
+
+            var request = ValidCreate();
+            request.Name = "  ERP Rollout  "; // trimmed before the check
+
+            var act = () => _sut.CreateAsync(DirectorId, request);
+
+            await act.Should().ThrowAsync<BadRequestException>()
+                .WithMessage("A project named 'ERP Rollout' already exists (PRJ-0001). Choose a different name.");
+            _projects.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task CreateAsync_NameUsedByAnotherDirector_IsAlsoRejected()
+        {
+            AddProject("PRJ-0001", directorId: OtherDirectorId).Name = "ERP Rollout";
+
+            var act = () => _sut.CreateAsync(DirectorId, ValidCreate());
+
+            await act.Should().ThrowAsync<BadRequestException>().WithMessage("A project named 'ERP Rollout' already exists*");
+        }
+
+        [Fact]
+        public async Task UpdateAsync_RenamingToAnotherProjectsName_IsRejected()
+        {
+            AddProject("PRJ-0001").Name = "Taken";
+            var project = AddProject("PRJ-0002");
+
+            var request = UpdateFrom(project, budget: project.BudgetHours);
+            request.Name = "Taken";
+
+            var act = () => _sut.UpdateAsync(DirectorId, project.Id, request);
+
+            await act.Should().ThrowAsync<BadRequestException>().WithMessage("A project named 'Taken' already exists (PRJ-0001)*");
+            project.Name.Should().Be("Project PRJ-0002");
+        }
+
+        [Fact]
+        public async Task UpdateAsync_KeepingItsOwnName_IsFine()
+        {
+            var project = AddProject("PRJ-0001");
+
+            var result = await _sut.UpdateAsync(DirectorId, project.Id, UpdateFrom(project, budget: 200));
+
+            result.Name.Should().Be("Project PRJ-0001");
+            result.BudgetHours.Should().Be(200);
         }
 
         [Fact]

@@ -329,6 +329,9 @@ namespace TimeSheet.DAL.Data.Migrations
 
                     b.HasIndex("ManagerId");
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.ToTable("Projects", null, t =>
                         {
                             t.HasCheckConstraint("CK_Projects_BudgetHours_Positive", "[BudgetHours] > 0");
