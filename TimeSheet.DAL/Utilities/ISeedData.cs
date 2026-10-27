@@ -4,6 +4,7 @@ namespace TimeSheet.DAL.Utilities
     {
         Task DataSeedingAsync();
         Task IdentitySeedingAsync();
-        Task DemoDataSeedingAsync();
+        // today = the business-time-zone date (IBusinessClock.Today), not server UTC.
+        Task DemoDataSeedingAsync(DateOnly today);
     }
 }

@@ -3,3 +3,6 @@ diagrams/
 
 # Postman collection + environment are kept locally, not on GitHub
 postman/
+
+# Interview demo script
+DEMO.md

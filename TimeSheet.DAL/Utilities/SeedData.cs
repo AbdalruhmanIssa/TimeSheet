@@ -41,10 +41,10 @@ namespace TimeSheet.DAL.Utilities
         }
 
         // Seed demo users + demo data (Development only — see Program.cs)
-        public async Task DemoDataSeedingAsync()
+        public async Task DemoDataSeedingAsync(DateOnly today)
         {
             var userIds = await SeedDemoUsersAsync();
-            await new DemoDataSeeder(_context, userIds).SeedAsync();
+            await new DemoDataSeeder(_context, userIds, today).SeedAsync();
         }
 
         // Username = first name (quick to type in a demo). One password per role.

@@ -258,7 +258,8 @@ using (var scope = app.Services.CreateScope())
         await seed.IdentitySeedingAsync();      // roles
 
         if (app.Environment.IsDevelopment())
-            await seed.DemoDataSeedingAsync();  // demo users + clients
+            await seed.DemoDataSeedingAsync(    // demo users + clients
+                scope.ServiceProvider.GetRequiredService<IBusinessClock>().Today);
 
         startupLogger.LogInformation("Database migration and seeding completed successfully.");
     }

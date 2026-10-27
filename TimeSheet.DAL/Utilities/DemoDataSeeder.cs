@@ -36,12 +36,13 @@ namespace TimeSheet.DAL.Utilities
         private readonly Dictionary<(string EmployeeId, DateOnly Day), decimal> _hoursPerDay = new();
         private readonly HashSet<(string EmployeeId, Guid ProjectId, DateOnly Day)> _takenDays = new();
 
-        public DemoDataSeeder(AppDbContext db, IReadOnlyDictionary<string, string> userIds)
+        // today comes from the business time zone: just after midnight in Riyadh, UTC is still on
+        // the previous day, and the data would end a day early.
+        public DemoDataSeeder(AppDbContext db, IReadOnlyDictionary<string, string> userIds, DateOnly today)
         {
             _db = db;
             _userIds = userIds;
-            // UTC "today" is never ahead of the business time zone, so nothing lands in the future.
-            _today = DateOnly.FromDateTime(_now);
+            _today = today;
 
             for (var day = _today.AddDays(-1); _workdays.Count < 200; day = day.AddDays(-1))
                 if (day.DayOfWeek is not (DayOfWeek.Friday or DayOfWeek.Saturday))

@@ -19,6 +19,10 @@ namespace TimeSheet.Tests.Integration
         private readonly SqlServerFixture _db = new();
         private Dictionary<string, string> _ids = new();
 
+        // Business-time-zone date, the same value Program.cs passes (IBusinessClock.Today).
+        private static readonly DateOnly Today = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "Asia/Riyadh"));
+
         public async Task InitializeAsync()
         {
             await _db.InitializeAsync();
@@ -75,7 +79,6 @@ namespace TimeSheet.Tests.Integration
         public async Task EveryEntry_IsInThePast_OnAProjectTheEmployeeWasAssignedTo_AndWithinTheProjectDates()
         {
             await using var db = _db.CreateContext();
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
             var entries = await db.TimeEntries
                 .Select(e => new
@@ -89,9 +92,21 @@ namespace TimeSheet.Tests.Integration
                 .ToListAsync();
 
             entries.Should().NotBeEmpty();
-            entries.Should().OnlyContain(e => e.WorkDate < today);
+            entries.Should().OnlyContain(e => e.WorkDate < Today);
             entries.Should().OnlyContain(e => e.WasAssigned);
             entries.Should().OnlyContain(e => e.WorkDate >= e.StartDate && (e.EndDate == null || e.WorkDate <= e.EndDate));
+        }
+
+        [Fact]
+        public async Task NewestEntry_IsOnTheLastWorkdayBeforeTheBusinessToday()
+        {
+            await using var db = _db.CreateContext();
+
+            var lastWorkday = Today.AddDays(-1);
+            while (lastWorkday.DayOfWeek is DayOfWeek.Friday or DayOfWeek.Saturday)
+                lastWorkday = lastWorkday.AddDays(-1);
+
+            (await db.TimeEntries.MaxAsync(e => e.WorkDate)).Should().Be(lastWorkday);
         }
 
         [Fact]
@@ -271,7 +286,7 @@ namespace TimeSheet.Tests.Integration
             using var scope = provider.CreateScope();
             var seed = scope.ServiceProvider.GetRequiredService<ISeedData>();
             await seed.IdentitySeedingAsync();
-            await seed.DemoDataSeedingAsync();
+            await seed.DemoDataSeedingAsync(Today);
         }
 
         // Identity wired like Program.cs (same password rules), over this test's database.
