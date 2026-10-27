@@ -30,7 +30,7 @@ namespace TimeSheet.Tests.Services
                 NewClient("Acme")
             });
 
-            var result = await _sut.GetAllAsync(new ClientFilterRequest());
+            var result = (await _sut.GetAllAsync(new ClientFilterRequest())).Items;
 
             result.Select(c => c.Name).Should().Equal("Acme", "Northwind");
         }
@@ -40,7 +40,7 @@ namespace TimeSheet.Tests.Services
         {
             _uow.SetupRepo(new List<Client> { NewClient("Acme"), NewClient("Fabrikam", isActive: false) });
 
-            var result = await _sut.GetAllAsync(new ClientFilterRequest { IncludeInactive = true });
+            var result = (await _sut.GetAllAsync(new ClientFilterRequest { IncludeInactive = true })).Items;
 
             result.Should().HaveCount(2);
         }

@@ -71,7 +71,7 @@ namespace TimeSheet.Tests.Services
             AddEntry(_p1, TimeEntryStatus.Rejected);
             AddEntry(_p2, TimeEntryStatus.PendingManager); // other manager's project
 
-            var result = await _sut.GetPendingAsync(Manager1, AppRoles.Manager);
+            var result = (await _sut.GetPendingAsync(Manager1, AppRoles.Manager, new PagedRequest())).Items;
 
             result.Select(e => e.Id).Should().Equal(older.Id, newer.Id);
             result.Should().OnlyContain(e => e.EmployeeName == "Eve Employee" && e.BudgetImpact == null);
@@ -84,7 +84,7 @@ namespace TimeSheet.Tests.Services
             AddEntry(_p1, TimeEntryStatus.PendingManager);
             AddEntry(_p2, TimeEntryStatus.PendingDirector); // other director's project
 
-            var result = await _sut.GetPendingAsync(Director1, AppRoles.Director);
+            var result = (await _sut.GetPendingAsync(Director1, AppRoles.Director, new PagedRequest())).Items;
 
             result.Should().ContainSingle(e => e.Id == mine.Id);
         }
@@ -98,7 +98,7 @@ namespace TimeSheet.Tests.Services
             var over = AddEntry(_p1, TimeEntryStatus.PendingDirector, hours: 8, daysAgo: 4, submittedMinutesAgo: 30);
             var fits = AddEntry(_p1, TimeEntryStatus.PendingDirector, hours: 4, daysAgo: 5, submittedMinutesAgo: 20);
 
-            var result = await _sut.GetPendingAsync(Director1, AppRoles.Director);
+            var result = (await _sut.GetPendingAsync(Director1, AppRoles.Director, new PagedRequest())).Items;
 
             var overImpact = result.Single(e => e.Id == over.Id).BudgetImpact!;
             overImpact.BudgetHours.Should().Be(100);
@@ -120,7 +120,7 @@ namespace TimeSheet.Tests.Services
             var entry = AddEntry(_p1, TimeEntryStatus.PendingDirector);
             AddReview(entry, Manager1, ReviewLevel.Manager, ReviewDecision.Approved);
 
-            var result = await _sut.GetPendingAsync(Director1, AppRoles.Director);
+            var result = (await _sut.GetPendingAsync(Director1, AppRoles.Director, new PagedRequest())).Items;
 
             result.Single().ManagerApprovedBy.Should().Be("Mona Manager");
             result.Single().ManagerApprovedAt.Should().NotBeNull();

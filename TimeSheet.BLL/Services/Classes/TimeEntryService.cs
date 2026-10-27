@@ -5,6 +5,7 @@ using System.Data;
 using TimeSheet.BLL.DTOs.Request;
 using TimeSheet.BLL.DTOs.Response;
 using TimeSheet.BLL.Exceptions;
+using TimeSheet.BLL.Extensions;
 using TimeSheet.BLL.Services.Interface;
 using TimeSheet.BLL.Settings;
 using TimeSheet.DAL.Enums;
@@ -55,7 +56,7 @@ namespace TimeSheet.BLL.Services.Classes
                 .ToListAsync();
         }
 
-        public async Task<List<TimeEntryResponse>> GetMyEntriesAsync(string employeeId, TimeEntryFilterRequest filter)
+        public async Task<PagedResponse<TimeEntryResponse>> GetMyEntriesAsync(string employeeId, TimeEntryFilterRequest filter)
         {
             if (filter.From is { } from && filter.To is { } to && from > to)
                 throw new BadRequestException("'from' cannot be after 'to'.");
@@ -78,8 +79,9 @@ namespace TimeSheet.BLL.Services.Classes
             return await query
                 .OrderByDescending(e => e.WorkDate)
                 .ThenBy(e => e.Project.Code)
+                .ThenBy(e => e.Id) // cancelled entries can share a project + day
                 .ProjectToType<TimeEntryResponse>()
-                .ToListAsync();
+                .ToPagedAsync(filter);
         }
 
         public async Task<TimeEntryResponse> GetMyEntryAsync(string employeeId, Guid entryId)

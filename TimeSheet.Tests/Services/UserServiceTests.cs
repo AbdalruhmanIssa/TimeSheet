@@ -36,7 +36,7 @@ namespace TimeSheet.Tests.Services
                 (NewUser("mgr-1", "Alice"), AppRoles.Manager),
                 (NewUser("emp-2", "Carl"), AppRoles.Employee));
 
-            var result = await _sut.GetAllAsync(new UserFilterRequest { Role = "employee" });
+            var result = (await _sut.GetAllAsync(new UserFilterRequest { Role = "employee" })).Items;
 
             result.Select(u => u.Id).Should().Equal("emp-1", "emp-2"); // ordered by full name
             result.Should().OnlyContain(u => u.Role == AppRoles.Employee);

@@ -5,7 +5,7 @@ namespace TimeSheet.BLL.Services.Interface
 {
     public interface IClientService
     {
-        Task<List<ClientResponse>> GetAllAsync(ClientFilterRequest filter);
+        Task<PagedResponse<ClientResponse>> GetAllAsync(ClientFilterRequest filter);
         Task<ClientResponse> GetByIdAsync(Guid clientId);
         Task<ClientResponse> CreateAsync(CreateClientRequest request);
         Task<ClientResponse> UpdateAsync(Guid clientId, UpdateClientRequest request);

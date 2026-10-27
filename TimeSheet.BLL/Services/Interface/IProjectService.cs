@@ -6,7 +6,7 @@ namespace TimeSheet.BLL.Services.Interface
     public interface IProjectService
     {
         // Reads — scoped by role through IProjectAccessService.
-        Task<List<ProjectResponse>> GetAllAsync(string userId, string role, ProjectFilterRequest filter);
+        Task<PagedResponse<ProjectResponse>> GetAllAsync(string userId, string role, ProjectFilterRequest filter);
         Task<ProjectDetailsResponse> GetByIdAsync(string userId, string role, Guid projectId);
 
         // Director writes — only on projects he directs.

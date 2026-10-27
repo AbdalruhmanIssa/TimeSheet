@@ -6,7 +6,7 @@ namespace TimeSheet.BLL.Services.Interface
     public interface IUserService
     {
         // Get
-        Task<List<UserResponse>> GetAllAsync(UserFilterRequest filter);
+        Task<PagedResponse<UserResponse>> GetAllAsync(UserFilterRequest filter);
         Task<UserResponse> GetByIdAsync(string userId);
 
         // Active Manager / Employee users for directors' pickers.

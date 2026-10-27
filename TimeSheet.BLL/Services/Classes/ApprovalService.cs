@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TimeSheet.BLL.DTOs.Request;
 using TimeSheet.BLL.DTOs.Response;
 using TimeSheet.BLL.Exceptions;
+using TimeSheet.BLL.Extensions;
 using TimeSheet.BLL.Services.Interface;
 using TimeSheet.DAL.Enums;
 using TimeSheet.DAL.Models;
@@ -26,7 +27,7 @@ namespace TimeSheet.BLL.Services.Classes
 
         // ---------------------------------------------------------------- Pending lists
 
-        public async Task<List<PendingReviewResponse>> GetPendingAsync(string reviewerId, string role)
+        public async Task<PagedResponse<PendingReviewResponse>> GetPendingAsync(string reviewerId, string role, PagedRequest paging)
         {
             var level = LevelOf(role);
             var waitingStatus = level == ReviewLevel.Manager
@@ -34,17 +35,19 @@ namespace TimeSheet.BLL.Services.Classes
                 : TimeEntryStatus.PendingDirector;
 
             // Oldest submission first (a queue).
-            var pending = await ScopedEntries(reviewerId, role)
+            var page = await ScopedEntries(reviewerId, role)
                 .Where(e => e.Status == waitingStatus)
                 .OrderBy(e => e.SubmittedAt)
                 .ThenBy(e => e.WorkDate)
+                .ThenBy(e => e.Id)
                 .ProjectToType<PendingReviewResponse>()
-                .ToListAsync();
+                .ToPagedAsync(paging);
 
-            if (level == ReviewLevel.Director && pending.Count > 0)
-                await AddBudgetImpactAsync(pending);
+            // Budget impact only for the entries on this page.
+            if (level == ReviewLevel.Director && page.Items.Count > 0)
+                await AddBudgetImpactAsync(page.Items);
 
-            return pending;
+            return page;
         }
 
         // ---------------------------------------------------------------- Actions

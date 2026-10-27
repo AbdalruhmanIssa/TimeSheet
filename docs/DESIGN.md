@@ -222,6 +222,10 @@ No SignalR. Dashboards expose pending counts; the frontend polls.
 
 Routes: `api/[area]/[controller]`, `[Authorize(Roles = "...")]`.
 
+**Paging:** every list endpoint (users, clients, projects, my entries, pending queues, portfolio) takes
+`?page=1&pageSize=20` (pageSize 1–100) and returns `{ items, page, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`.
+Dropdowns and reports are not paged.
+
 **Employee**
 - `GET    Employee/Projects` — dropdown (active assigned projects: id, code, name)
 - `POST   Employee/TimeEntries` — `{ projectId, workDate, hours, notes }`

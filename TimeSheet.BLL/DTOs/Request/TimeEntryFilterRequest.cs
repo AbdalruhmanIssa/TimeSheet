@@ -3,7 +3,7 @@ using TimeSheet.DAL.Enums;
 namespace TimeSheet.BLL.DTOs.Request
 {
     // Query-string filters for GET Employee/TimeEntries.
-    public class TimeEntryFilterRequest
+    public class TimeEntryFilterRequest : PagedRequest
     {
         // Cancelled entries are hidden unless status=Cancelled is asked for.
         public TimeEntryStatus? Status { get; set; }

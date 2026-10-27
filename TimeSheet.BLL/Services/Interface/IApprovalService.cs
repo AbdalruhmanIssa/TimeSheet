@@ -8,7 +8,7 @@ namespace TimeSheet.BLL.Services.Interface
     // Director on PendingDirector entries of projects he directs.
     public interface IApprovalService
     {
-        Task<List<PendingReviewResponse>> GetPendingAsync(string reviewerId, string role);
+        Task<PagedResponse<PendingReviewResponse>> GetPendingAsync(string reviewerId, string role, PagedRequest paging);
 
         Task<PendingReviewResponse> ApproveAsync(string reviewerId, string role, Guid entryId);
         Task<PendingReviewResponse> RejectAsync(string reviewerId, string role, Guid entryId, ReviewRequest request);

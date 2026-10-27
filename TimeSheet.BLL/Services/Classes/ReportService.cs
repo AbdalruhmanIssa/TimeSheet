@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TimeSheet.BLL.DTOs.Request;
 using TimeSheet.BLL.DTOs.Response;
 using TimeSheet.BLL.Exceptions;
+using TimeSheet.BLL.Extensions;
 using TimeSheet.BLL.Services.Interface;
 using TimeSheet.DAL.Enums;
 using TimeSheet.DAL.Models;
@@ -34,15 +35,16 @@ namespace TimeSheet.BLL.Services.Classes
             return summaries.SingleOrDefault() ?? throw new NotFoundException("Project not found.");
         }
 
-        public async Task<List<ProjectSummaryReport>> GetPortfolioAsync(string directorId, ProjectStatus? status)
+        public async Task<PagedResponse<ProjectSummaryReport>> GetPortfolioAsync(string directorId, PortfolioFilterRequest filter)
         {
             var projects = _access.VisibleProjects(directorId, AppRoles.Director);
-            if (status is { } s)
+            if (filter.Status is { } s)
                 projects = projects.Where(p => p.Status == s);
 
             var summaries = await BuildSummariesAsync(projects);
 
             // Problems first: already over budget, then heading over, then close to the limit.
+            // The order depends on computed budget numbers, so it's sorted (and paged) in memory.
             return summaries
                 .OrderBy(r => r.BudgetStatus == BudgetStatus.Exceeded ? 0
                             : r.IsProjectedToExceed ? 1
@@ -50,7 +52,8 @@ namespace TimeSheet.BLL.Services.Classes
                             : 3)
                 .ThenByDescending(r => r.UsagePercent)
                 .ThenBy(r => r.Code)
-                .ToList();
+                .ToList()
+                .ToPaged(filter);
         }
 
         public Task<List<ProjectSummaryReport>> GetProjectSummariesAsync(string userId, string role)

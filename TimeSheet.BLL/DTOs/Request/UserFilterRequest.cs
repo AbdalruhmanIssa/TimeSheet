@@ -1,7 +1,7 @@
 namespace TimeSheet.BLL.DTOs.Request
 {
     // Query-string filters for GET Admin/Users.
-    public class UserFilterRequest
+    public class UserFilterRequest : PagedRequest
     {
         public string? Role { get; set; }
         public bool? IsBlocked { get; set; }

@@ -1,0 +1,5 @@
+# Generated diagram pictures (PNG/SVG) — rebuilt from DIAGRAMS.html
+diagrams/
+
+# Postman collection + environment are kept locally, not on GitHub
+postman/

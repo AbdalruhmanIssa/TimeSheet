@@ -33,11 +33,11 @@ namespace TimeSheet.PL.Controllers.Director
         }
 
         // All my projects with budget status — Exceeded / projected-to-exceed first.
-        // GET api/Director/Reports/portfolio?status=Active
+        // GET api/Director/Reports/portfolio?status=Active&page=1&pageSize=20
         [HttpGet("portfolio")]
-        public async Task<IActionResult> GetPortfolio([FromQuery] ProjectStatus? status)
+        public async Task<IActionResult> GetPortfolio([FromQuery] PortfolioFilterRequest filter)
         {
-            var report = await _reportService.GetPortfolioAsync(User.GetUserId(), status);
+            var report = await _reportService.GetPortfolioAsync(User.GetUserId(), filter);
             return Ok(report);
         }
 

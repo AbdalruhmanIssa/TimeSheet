@@ -22,9 +22,9 @@ namespace TimeSheet.PL.Controllers.Manager
         }
 
         [HttpGet("pending")]
-        public async Task<IActionResult> GetPending()
+        public async Task<IActionResult> GetPending([FromQuery] PagedRequest paging)
         {
-            var entries = await _approvalService.GetPendingAsync(User.GetUserId(), AppRoles.Manager);
+            var entries = await _approvalService.GetPendingAsync(User.GetUserId(), AppRoles.Manager, paging);
             return Ok(entries);
         }
 

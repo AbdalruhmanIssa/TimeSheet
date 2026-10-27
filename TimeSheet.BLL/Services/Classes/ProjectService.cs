@@ -28,7 +28,7 @@ namespace TimeSheet.BLL.Services.Classes
 
         // ---------------------------------------------------------------- Reads
 
-        public async Task<List<ProjectResponse>> GetAllAsync(string userId, string role, ProjectFilterRequest filter)
+        public async Task<PagedResponse<ProjectResponse>> GetAllAsync(string userId, string role, ProjectFilterRequest filter)
         {
             var query = _access.VisibleProjects(userId, role);
 
@@ -45,9 +45,9 @@ namespace TimeSheet.BLL.Services.Classes
             }
 
             return await query
-                .OrderBy(p => p.Code)
+                .OrderBy(p => p.Code) // unique
                 .ProjectToType<ProjectResponse>()
-                .ToListAsync();
+                .ToPagedAsync(filter);
         }
 
         public async Task<ProjectDetailsResponse> GetByIdAsync(string userId, string role, Guid projectId)

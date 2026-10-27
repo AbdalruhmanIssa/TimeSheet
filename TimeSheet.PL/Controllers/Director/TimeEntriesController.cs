@@ -23,9 +23,9 @@ namespace TimeSheet.PL.Controllers.Director
 
         // Includes each entry's budget impact.
         [HttpGet("pending")]
-        public async Task<IActionResult> GetPending()
+        public async Task<IActionResult> GetPending([FromQuery] PagedRequest paging)
         {
-            var entries = await _approvalService.GetPendingAsync(User.GetUserId(), AppRoles.Director);
+            var entries = await _approvalService.GetPendingAsync(User.GetUserId(), AppRoles.Director, paging);
             return Ok(entries);
         }
 

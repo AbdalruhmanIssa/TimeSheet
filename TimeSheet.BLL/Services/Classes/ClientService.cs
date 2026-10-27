@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TimeSheet.BLL.DTOs.Request;
 using TimeSheet.BLL.DTOs.Response;
 using TimeSheet.BLL.Exceptions;
+using TimeSheet.BLL.Extensions;
 using TimeSheet.BLL.Services.Interface;
 using TimeSheet.DAL.Models;
 using TimeSheet.DAL.Repositories.Interface;
@@ -18,7 +19,7 @@ namespace TimeSheet.BLL.Services.Classes
             _uow = uow;
         }
 
-        public async Task<List<ClientResponse>> GetAllAsync(ClientFilterRequest filter)
+        public async Task<PagedResponse<ClientResponse>> GetAllAsync(ClientFilterRequest filter)
         {
             var query = _uow.Repo<Client>().Query();
 
@@ -34,9 +35,9 @@ namespace TimeSheet.BLL.Services.Classes
             }
 
             return await query
-                .OrderBy(c => c.Name)
+                .OrderBy(c => c.Name) // unique
                 .ProjectToType<ClientResponse>()
-                .ToListAsync();
+                .ToPagedAsync(filter);
         }
 
         public async Task<ClientResponse> GetByIdAsync(Guid clientId)

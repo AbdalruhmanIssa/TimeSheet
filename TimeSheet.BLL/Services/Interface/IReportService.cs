@@ -16,7 +16,7 @@ namespace TimeSheet.BLL.Services.Interface
         Task<List<EmployeeHoursRow>> GetEmployeeBreakdownAsync(string userId, string role, Guid projectId, ReportFilterRequest filter);
 
         // Director: all his projects, Exceeded / projected-to-exceed first.
-        Task<List<ProjectSummaryReport>> GetPortfolioAsync(string directorId, ProjectStatus? status);
+        Task<PagedResponse<ProjectSummaryReport>> GetPortfolioAsync(string directorId, PortfolioFilterRequest filter);
 
         // Budget summaries of every project the user can see (any role), unordered.
         Task<List<ProjectSummaryReport>> GetProjectSummariesAsync(string userId, string role);

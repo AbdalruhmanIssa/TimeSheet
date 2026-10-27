@@ -1,7 +1,7 @@
 namespace TimeSheet.BLL.DTOs.Request
 {
     // Query-string filters for GET Director/Clients.
-    public class ClientFilterRequest
+    public class ClientFilterRequest : PagedRequest
     {
         // Matches client name or contact name.
         public string? Search { get; set; }

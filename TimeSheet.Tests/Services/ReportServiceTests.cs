@@ -128,7 +128,7 @@ namespace TimeSheet.Tests.Services
 
             AddProject("PRJ-0005", budget: 100, directorId: OtherDirector); // not mine
 
-            var result = await _sut.GetPortfolioAsync(Director, status: null);
+            var result = (await _sut.GetPortfolioAsync(Director, new PortfolioFilterRequest())).Items;
 
             result.Select(r => r.Code).Should().Equal("PRJ-0002", "PRJ-0003", "PRJ-0004", "PRJ-0001");
             result[0].BudgetStatus.Should().Be(BudgetStatus.Exceeded);
@@ -142,7 +142,7 @@ namespace TimeSheet.Tests.Services
         {
             AddProject("PRJ-0002", budget: 50).Status = ProjectStatus.Archived;
 
-            var result = await _sut.GetPortfolioAsync(Director, ProjectStatus.Archived);
+            var result = (await _sut.GetPortfolioAsync(Director, new PortfolioFilterRequest { Status = ProjectStatus.Archived })).Items;
 
             result.Select(r => r.Code).Should().Equal("PRJ-0002");
         }

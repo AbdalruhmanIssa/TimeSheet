@@ -25,7 +25,7 @@ namespace TimeSheet.BLL.Services.Classes
             _uow = uow;
         }
 
-        public async Task<List<UserResponse>> GetAllAsync(UserFilterRequest filter)
+        public async Task<PagedResponse<UserResponse>> GetAllAsync(UserFilterRequest filter)
         {
             var query = ProjectUsers();
 
@@ -47,7 +47,7 @@ namespace TimeSheet.BLL.Services.Classes
                     u.Email.Contains(search));
             }
 
-            return await query.OrderBy(u => u.FullName).ToListAsync();
+            return await query.OrderBy(u => u.FullName).ThenBy(u => u.Id).ToPagedAsync(filter);
         }
 
         public async Task<UserResponse> GetByIdAsync(string userId)

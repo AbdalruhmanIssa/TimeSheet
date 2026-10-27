@@ -36,7 +36,9 @@ namespace TimeSheet.DAL.Data
                     if (entry.Entity.Id == Guid.Empty)
                         entry.Entity.Id = Guid.NewGuid();
 
-                    entry.Entity.CreatedAt = DateTime.UtcNow;
+                    // Services never set it; only the demo seed does (to give history real timestamps).
+                    if (entry.Entity.CreatedAt == default)
+                        entry.Entity.CreatedAt = DateTime.UtcNow;
                 }
                 else if (entry.State == EntityState.Modified)
                 {

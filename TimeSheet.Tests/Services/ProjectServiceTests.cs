@@ -238,7 +238,7 @@ namespace TimeSheet.Tests.Services
             AddProject("PRJ-0002", directorId: OtherDirectorId);
             AddProject("PRJ-0003");
 
-            var result = await _sut.GetAllAsync(DirectorId, AppRoles.Director, new ProjectFilterRequest());
+            var result = (await _sut.GetAllAsync(DirectorId, AppRoles.Director, new ProjectFilterRequest())).Items;
 
             result.Select(p => p.Code).Should().Equal("PRJ-0001", "PRJ-0003");
         }
@@ -249,7 +249,7 @@ namespace TimeSheet.Tests.Services
             AddProject("PRJ-0001", managerId: ManagerId);
             AddProject("PRJ-0002", managerId: OtherManagerId);
 
-            var result = await _sut.GetAllAsync(OtherManagerId, AppRoles.Manager, new ProjectFilterRequest());
+            var result = (await _sut.GetAllAsync(OtherManagerId, AppRoles.Manager, new ProjectFilterRequest())).Items;
 
             result.Select(p => p.Code).Should().Equal("PRJ-0002");
         }

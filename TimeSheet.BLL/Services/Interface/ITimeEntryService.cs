@@ -9,7 +9,7 @@ namespace TimeSheet.BLL.Services.Interface
         // Active projects the employee is actively assigned to.
         Task<List<ProjectOptionResponse>> GetProjectOptionsAsync(string employeeId);
 
-        Task<List<TimeEntryResponse>> GetMyEntriesAsync(string employeeId, TimeEntryFilterRequest filter);
+        Task<PagedResponse<TimeEntryResponse>> GetMyEntriesAsync(string employeeId, TimeEntryFilterRequest filter);
         Task<TimeEntryResponse> GetMyEntryAsync(string employeeId, Guid entryId);
 
         // Review history of one of my entries, oldest first.

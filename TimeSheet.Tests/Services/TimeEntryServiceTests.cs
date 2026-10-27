@@ -379,7 +379,7 @@ namespace TimeSheet.Tests.Services
             AddEntry(Me, _active2, Today, 2, TimeEntryStatus.Cancelled);
             AddEntry(SomeoneElse, _active, Today, 4, TimeEntryStatus.PendingManager);
 
-            var result = await _sut.GetMyEntriesAsync(Me, new TimeEntryFilterRequest());
+            var result = (await _sut.GetMyEntriesAsync(Me, new TimeEntryFilterRequest())).Items;
 
             result.Select(e => e.WorkDate).Should().Equal(Today, Today.AddDays(-2));
         }
@@ -389,7 +389,7 @@ namespace TimeSheet.Tests.Services
         {
             AddEntry(Me, _active2, Today, 2, TimeEntryStatus.Cancelled);
 
-            var result = await _sut.GetMyEntriesAsync(Me, new TimeEntryFilterRequest { Status = TimeEntryStatus.Cancelled });
+            var result = (await _sut.GetMyEntriesAsync(Me, new TimeEntryFilterRequest { Status = TimeEntryStatus.Cancelled })).Items;
 
             result.Should().ContainSingle();
         }

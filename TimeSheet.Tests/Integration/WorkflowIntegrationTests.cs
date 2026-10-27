@@ -47,7 +47,7 @@ namespace TimeSheet.Tests.Integration
 
             // Manager approves -> director's queue shows it with budget impact and who approved.
             await s.Approvals.ApproveAsync(w.ManagerId, AppRoles.Manager, entry.Id);
-            var pending = (await s.Approvals.GetPendingAsync(w.DirectorId, AppRoles.Director)).Single();
+            var pending = (await s.Approvals.GetPendingAsync(w.DirectorId, AppRoles.Director, new PagedRequest())).Items.Single();
             pending.ManagerApprovedBy.Should().Be(w.ManagerId.Split('-')[1] + " " + w.ManagerId.Split('-')[2]);
             pending.BudgetImpact!.ActualHours.Should().Be(0);
             pending.BudgetImpact.RemainingAfterApproval.Should().Be(4);
@@ -138,6 +138,40 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
+        public async Task Paging_OnSqlServer_PagesDoNotOverlap_AndCountsAreRight()
+        {
+            var w = await _db.CreateWorldAsync();
+            await using var s = _db.CreateServices();
+
+            // 2 projects in this world, 1 per page.
+            var first = await s.Projects.GetAllAsync(w.DirectorId, AppRoles.Director, new ProjectFilterRequest { Page = 1, PageSize = 1 });
+            var second = await s.Projects.GetAllAsync(w.DirectorId, AppRoles.Director, new ProjectFilterRequest { Page = 2, PageSize = 1 });
+            var third = await s.Projects.GetAllAsync(w.DirectorId, AppRoles.Director, new ProjectFilterRequest { Page = 3, PageSize = 1 });
+
+            first.TotalCount.Should().Be(2);
+            first.TotalPages.Should().Be(2);
+            first.HasNextPage.Should().BeTrue();
+            second.HasNextPage.Should().BeFalse();
+            first.Items.Concat(second.Items).Select(p => p.Id).Should().BeEquivalentTo(new[] { w.ProjectId, w.Project2Id });
+            third.Items.Should().BeEmpty();
+
+            // Director's queue: budget impact is filled for the entries on the requested page.
+            foreach (var day in new[] { 1, 2, 3 })
+            {
+                var entry = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, SqlServerFixture.Today.AddDays(-day), 2));
+                await s.Approvals.ApproveAsync(w.ManagerId, AppRoles.Manager, entry.Id);
+            }
+
+            var queuePage2 = await s.Approvals.GetPendingAsync(w.DirectorId, AppRoles.Director, new PagedRequest { Page = 2, PageSize = 2 });
+            queuePage2.TotalCount.Should().Be(3);
+            queuePage2.Items.Should().ContainSingle().Which.BudgetImpact.Should().NotBeNull();
+
+            var mine = await s.Entries.GetMyEntriesAsync(w.EmployeeId, new TimeEntryFilterRequest { PageSize = 2 });
+            mine.TotalCount.Should().Be(3);
+            mine.Items.Should().HaveCount(2);
+        }
+
+        [Fact]
         public async Task Scoping_OnSqlServer_EveryoneElseGets404()
         {
             var w = await _db.CreateWorldAsync();
@@ -152,8 +186,8 @@ namespace TimeSheet.Tests.Integration
             await Must404(() => s.Reports.GetProjectSummaryAsync(w.OtherDirectorId, AppRoles.Director, w.ProjectId));
             await Must404(() => s.Reports.GetDailyReportAsync(w.OtherManagerId, AppRoles.Manager, w.ProjectId, new ReportFilterRequest()));
 
-            (await s.Approvals.GetPendingAsync(w.OtherManagerId, AppRoles.Manager)).Should().BeEmpty();
-            (await s.Reports.GetPortfolioAsync(w.OtherDirectorId, status: null)).Should().BeEmpty();
+            (await s.Approvals.GetPendingAsync(w.OtherManagerId, AppRoles.Manager, new PagedRequest())).Items.Should().BeEmpty();
+            (await s.Reports.GetPortfolioAsync(w.OtherDirectorId, new PortfolioFilterRequest())).Items.Should().BeEmpty();
         }
 
         [Fact]
@@ -197,7 +231,7 @@ namespace TimeSheet.Tests.Integration
             employees.Sum(e => e.SharePercent).Should().BeApproximately(100m, 0.02m);
 
             // Portfolio: project A (projected over) comes before project B (nothing logged).
-            var portfolio = await s.Reports.GetPortfolioAsync(w.DirectorId, status: null);
+            var portfolio = (await s.Reports.GetPortfolioAsync(w.DirectorId, new PortfolioFilterRequest())).Items;
             portfolio.Select(p => p.ProjectId).Should().Equal(w.ProjectId, w.Project2Id);
 
             // Dashboards.
