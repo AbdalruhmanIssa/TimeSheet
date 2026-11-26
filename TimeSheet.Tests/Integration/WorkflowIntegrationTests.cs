@@ -8,19 +8,19 @@ namespace TimeSheet.Tests.Integration
 {
     // The whole flow through the real services on SQL Server: the rules hold end to end,
     // and every query (Mapster projections, review subqueries, grouped sums) translates to SQL.
-    [Collection(SqlServerCollection.Name)]
+    [Collection(PostgresCollection.Name)]
     [Trait("Category", "Integration")]
     public class WorkflowIntegrationTests
     {
-        private readonly SqlServerFixture _db;
+        private readonly PostgresFixture _db;
 
-        public WorkflowIntegrationTests(SqlServerFixture db) => _db = db;
+        public WorkflowIntegrationTests(PostgresFixture db) => _db = db;
 
         [Fact]
         public async Task FullLifecycle_WithBudgetLockAndReopen()
         {
             var w = await _db.CreateWorldAsync(budget: 10);
-            var day = SqlServerFixture.Today.AddDays(-1);
+            var day = PostgresFixture.Today.AddDays(-1);
             await using var s = _db.CreateServices();
 
             // Employee logs 6 h -> PendingManager.
@@ -67,6 +67,16 @@ namespace TimeSheet.Tests.Integration
             summary.ActualHours.Should().Be(6);
             summary.UsagePercent.Should().Be(60);
 
+            // The director's approved list (what he can reopen), with who approved at each level.
+            var approved = (await s.Approvals.GetApprovedAsync(w.DirectorId, new ApprovedEntryFilterRequest
+            {
+                ProjectId = w.ProjectId, From = day, To = day
+            })).Items.Single();
+            approved.Id.Should().Be(entry.Id);
+            approved.ManagerApprovedBy.Should().NotBeNull();
+            approved.DirectorApprovedBy.Should().NotBeNull();
+            (await s.Approvals.GetApprovedAsync(w.OtherDirectorId, new ApprovedEntryFilterRequest())).Items.Should().BeEmpty();
+
             // Director reopens -> Rejected at Director level; hours leave Actual; budget unlocks.
             await s.Approvals.ReopenAsync(w.DirectorId, entry.Id, new ReviewRequest { Comment = "Belongs to project B" });
             mine = await s.Entries.GetMyEntryAsync(w.EmployeeId, entry.Id);
@@ -89,10 +99,10 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
-        public async Task DailyCapAndDuplicateDay_OnSqlServer()
+        public async Task DailyCapAndDuplicateDay_OnPostgres()
         {
             var w = await _db.CreateWorldAsync();
-            var day = SqlServerFixture.Today.AddDays(-3);
+            var day = PostgresFixture.Today.AddDays(-3);
             await using var s = _db.CreateServices();
 
             await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, day, 8));
@@ -107,10 +117,10 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
-        public async Task CancelledEntryFreesTheDay_OnSqlServer()
+        public async Task CancelledEntryFreesTheDay_OnPostgres()
         {
             var w = await _db.CreateWorldAsync();
-            var day = SqlServerFixture.Today.AddDays(-4);
+            var day = PostgresFixture.Today.AddDays(-4);
             await using var s = _db.CreateServices();
 
             var first = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, day, 8));
@@ -138,7 +148,7 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
-        public async Task Paging_OnSqlServer_PagesDoNotOverlap_AndCountsAreRight()
+        public async Task Paging_OnPostgres_PagesDoNotOverlap_AndCountsAreRight()
         {
             var w = await _db.CreateWorldAsync();
             await using var s = _db.CreateServices();
@@ -158,7 +168,7 @@ namespace TimeSheet.Tests.Integration
             // Director's queue: budget impact is filled for the entries on the requested page.
             foreach (var day in new[] { 1, 2, 3 })
             {
-                var entry = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, SqlServerFixture.Today.AddDays(-day), 2));
+                var entry = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, PostgresFixture.Today.AddDays(-day), 2));
                 await s.Approvals.ApproveAsync(w.ManagerId, AppRoles.Manager, entry.Id);
             }
 
@@ -172,11 +182,11 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
-        public async Task Scoping_OnSqlServer_EveryoneElseGets404()
+        public async Task Scoping_OnPostgres_EveryoneElseGets404()
         {
             var w = await _db.CreateWorldAsync();
             await using var s = _db.CreateServices();
-            var entry = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, SqlServerFixture.Today, 2));
+            var entry = await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, PostgresFixture.Today, 2));
 
             await Must404(() => s.Projects.GetByIdAsync(w.OtherDirectorId, AppRoles.Director, w.ProjectId));
             await Must404(() => s.Projects.GetByIdAsync(w.OtherManagerId, AppRoles.Manager, w.ProjectId));
@@ -191,7 +201,7 @@ namespace TimeSheet.Tests.Integration
         }
 
         [Fact]
-        public async Task Reports_And_Dashboards_OnSqlServer()
+        public async Task Reports_And_Dashboards_OnPostgres()
         {
             var w = await _db.CreateWorldAsync(budget: 20);
             await using var s = _db.CreateServices();

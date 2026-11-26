@@ -14,6 +14,9 @@ namespace TimeSheet.BLL.Services.Interface
         Task<PendingReviewResponse> RejectAsync(string reviewerId, string role, Guid entryId, ReviewRequest request);
         Task<BulkReviewResponse> BulkApproveAsync(string reviewerId, string role, BulkReviewRequest request);
 
+        // Director only: Approved entries on his projects (the ones he can reopen), latest approval first.
+        Task<PagedResponse<PendingReviewResponse>> GetApprovedAsync(string directorId, ApprovedEntryFilterRequest filter);
+
         // Director only: Approved -> Rejected, comment required.
         Task<PendingReviewResponse> ReopenAsync(string directorId, Guid entryId, ReviewRequest request);
     }

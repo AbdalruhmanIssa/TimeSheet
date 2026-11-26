@@ -50,6 +50,34 @@ namespace TimeSheet.BLL.Services.Classes
             return page;
         }
 
+        public async Task<PagedResponse<PendingReviewResponse>> GetApprovedAsync(string directorId, ApprovedEntryFilterRequest filter)
+        {
+            if (filter.From is { } f && filter.To is { } t && f > t)
+                throw new BadRequestException("'from' cannot be after 'to'.");
+
+            var entries = ScopedEntries(directorId, AppRoles.Director)
+                .Where(e => e.Status == TimeEntryStatus.Approved);
+
+            if (filter.ProjectId is { } projectId)
+                entries = entries.Where(e => e.ProjectId == projectId);
+            if (!string.IsNullOrWhiteSpace(filter.EmployeeId))
+                entries = entries.Where(e => e.EmployeeId == filter.EmployeeId);
+            if (filter.From is { } from)
+                entries = entries.Where(e => e.WorkDate >= from);
+            if (filter.To is { } to)
+                entries = entries.Where(e => e.WorkDate <= to);
+
+            // Latest final approval first, so what was just approved is on top.
+            return await entries
+                .OrderByDescending(e => e.Reviews
+                    .Where(r => r.Level == ReviewLevel.Director && r.Decision == ReviewDecision.Approved)
+                    .Max(r => (DateTime?)r.CreatedAt))
+                .ThenByDescending(e => e.WorkDate)
+                .ThenBy(e => e.Id)
+                .ProjectToType<PendingReviewResponse>()
+                .ToPagedAsync(filter);
+        }
+
         // ---------------------------------------------------------------- Actions
 
         public async Task<PendingReviewResponse> ApproveAsync(string reviewerId, string role, Guid entryId)

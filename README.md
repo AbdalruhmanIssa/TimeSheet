@@ -14,7 +14,7 @@ Employees log hours on the projects they are assigned to. A manager approves the
   - At most 12 hours per day across all projects.
   - No future dates, and no dates older than 30 days.
   - The budget is locked once the project has its first approved hour.
-- **Concurrency safety.** The checks that read other rows (daily cap, duplicate day, project codes and names) run in `SERIALIZABLE` transactions. Time entries have a `RowVersion`, so two reviewers can't both approve the same entry.
+- **Concurrency safety.** The checks that read other rows (daily cap, duplicate day, project codes and names) run in `SERIALIZABLE` transactions. Time entries have a `RowVersion` (PostgreSQL `xmin`), so two reviewers can't both approve the same entry.
 - **Budget status** comes from approved hours: `OnTrack` (< 80 %), `NearLimit` (80–100 %), `Exceeded` (> 100 %). A separate `isProjectedToExceed` flag also counts pending hours.
 - **Reports:**
   - project summary
@@ -30,12 +30,12 @@ Employees log hours on the projects they are assigned to. A manager approves the
 | | |
 |---|---|
 | Framework | .NET 10, ASP.NET Core Web API |
-| Data | EF Core + SQL Server |
+| Data | EF Core + PostgreSQL (Npgsql) |
 | Auth | ASP.NET Identity + JWT bearer |
 | Mapping | Mapster |
 | PDF | QuestPDF (Community licence) |
 | API docs | OpenAPI + Scalar |
-| Tests | xUnit, Moq, MockQueryable, FluentAssertions; integration tests on real SQL Server |
+| Tests | xUnit, Moq, MockQueryable, FluentAssertions; integration tests on real PostgreSQL |
 
 ## Architecture
 
@@ -45,7 +45,7 @@ Four projects, N-tier:
 TimeSheet.PL     → controllers per role area, JWT/Identity setup, exception middleware, Program.cs
 TimeSheet.BLL    → services (all business rules), DTOs, Mapster config, QuestPDF document
 TimeSheet.DAL    → entities, EF configurations, migrations, UnitOfWork + generic repository, seeding
-TimeSheet.Tests  → unit tests per service + integration tests against SQL Server
+TimeSheet.Tests  → unit tests per service + integration tests against PostgreSQL
 ```
 
 - Controllers stay thin. They read the user id from the token and call one service.
@@ -77,7 +77,7 @@ erDiagram
         date WorkDate
         decimal Hours "0 < h <= 12"
         int Status
-        rowversion RowVersion
+        uint RowVersion "PostgreSQL xmin"
     }
     TimeEntryReviews {
         guid Id PK
@@ -106,12 +106,16 @@ stateDiagram-v2
 
 ## Getting started
 
-**Requirements:** .NET 10 SDK and SQL Server (LocalDB, Express or full).
+**Requirements:** .NET 10 SDK and PostgreSQL. The repo includes a `docker-compose.yml` that runs PostgreSQL 17 on port 5432:
+
+```bash
+docker compose up -d
+```
 
 1. **Set the secrets.** They are kept out of `appsettings.json` and go in user-secrets:
 
    ```bash
-   dotnet user-secrets set "ConnectionStrings:Default" "Server=.;Database=TimeSheet;Trusted_Connection=True;TrustServerCertificate=True" --project TimeSheet.PL
+   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=timesheet;Username=postgres;Password=postgres" --project TimeSheet.PL
    ```
    ```bash
    dotnet user-secrets set "jwtOptions:SecretKey" "<base64 key, e.g. from: openssl rand -base64 32>" --project TimeSheet.PL
@@ -150,7 +154,7 @@ All routes are `api/{area}/{controller}`. List endpoints accept `?page=1&pageSiz
 |---|---|
 | **Employee** | `GET Projects` (dropdown) · `POST/GET TimeEntries` · `PUT/DELETE TimeEntries/{id}` · `GET TimeEntries/{id}/history` · `GET Dashboards` |
 | **Manager** | `GET Projects` · `GET TimeEntries/pending` · `POST TimeEntries/{id}/approve \| reject` · `POST TimeEntries/bulk-approve` · `GET Reports/projects/{id}/summary \| daily \| employees \| pdf` · `GET Dashboards` |
-| **Director** | `CRUD Clients` · `POST/GET/PUT Projects` · `PATCH Projects/{id}/status` · `POST/DELETE Projects/{id}/employees` · `GET TimeEntries/pending` · `POST TimeEntries/{id}/approve \| reject \| reopen` · `POST TimeEntries/bulk-approve` · `GET Reports/portfolio` · project reports · `GET Dashboards` |
+| **Director** | `CRUD Clients` · `POST/GET/PUT Projects` · `PATCH Projects/{id}/status` · `POST/DELETE Projects/{id}/employees` · `GET TimeEntries/pending \| approved` · `POST TimeEntries/{id}/approve \| reject \| reopen` · `POST TimeEntries/bulk-approve` · `GET Reports/portfolio` · project reports · `GET Dashboards` |
 | **Admin** | `CRUD Users` · `PATCH Users/{id}/role \| password \| block \| unblock` |
 
 The full design (entities, every rule, report formulas) is in [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -175,8 +179,8 @@ dotnet test
 ```
 
 - **Unit tests** cover every service with mocked repositories: every allowed and blocked status change, the daily cap, duplicate days, the budget lock, visibility scoping, report math and paging.
-- **Integration tests** (`Category=Integration`) run on a throwaway SQL Server database. It is created and dropped on each run. They cover the full workflow, the race conditions (two submits or approvals at once), and the demo seed itself.
-  - They use LocalDB by default. To use another server, set `TIMESHEET_TEST_SQLSERVER` to a connection string without a database name.
+- **Integration tests** (`Category=Integration`) run on a throwaway PostgreSQL database. It is created and dropped on each run. They cover the full workflow, the race conditions (two submits or approvals at once), and the demo seed itself.
+  - They use `Host=localhost;Port=5432;Username=postgres;Password=postgres` by default (start it with `docker compose up -d`). To use another server, set `TIMESHEET_TEST_POSTGRES` to a connection string without a database name.
   - To skip them: `dotnet test --filter "Category!=Integration"`.
 
 ## Database migrations

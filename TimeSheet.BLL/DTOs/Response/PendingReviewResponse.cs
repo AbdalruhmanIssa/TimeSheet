@@ -2,7 +2,8 @@ using TimeSheet.DAL.Enums;
 
 namespace TimeSheet.BLL.DTOs.Response
 {
-    // An entry as a reviewer sees it (pending lists and the result of approve/reject/reopen).
+    // An entry as a reviewer sees it (pending lists, the director's approved list,
+    // and the result of approve/reject/reopen).
     public class PendingReviewResponse
     {
         public Guid Id { get; set; }
@@ -24,6 +25,10 @@ namespace TimeSheet.BLL.DTOs.Response
         // Who approved it at manager level (director's list).
         public string? ManagerApprovedBy { get; set; }
         public DateTime? ManagerApprovedAt { get; set; }
+
+        // Who gave the final approval (director's approved list). Latest one if it was reopened and approved again.
+        public string? DirectorApprovedBy { get; set; }
+        public DateTime? DirectorApprovedAt { get; set; }
 
         // Director's pending list only: what approving this entry does to the project budget.
         public BudgetImpactResponse? BudgetImpact { get; set; }

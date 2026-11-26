@@ -13,7 +13,8 @@ namespace TimeSheet.DAL.Data.Configs
 
             builder.Property(c => c.Name)
                 .IsRequired()
-                .HasMaxLength(200);
+                .HasMaxLength(200)
+                .HasColumnType("citext"); // case-insensitive, so the unique index below ignores case
 
             builder.HasIndex(c => c.Name).IsUnique();
 

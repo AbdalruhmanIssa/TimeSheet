@@ -40,11 +40,13 @@ namespace TimeSheet.BLL.Services.Classes
 
             if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var search = filter.Search.Trim();
+                // ILIKE is PostgreSQL's case-insensitive LIKE (a plain Contains would be case-sensitive).
+                // SearchPattern escapes %, _ and \ in the search text so they match literally.
+                var pattern = SearchPattern.Contains(filter.Search.Trim());
                 query = query.Where(u =>
-                    u.FullName.Contains(search) ||
-                    u.UserName.Contains(search) ||
-                    u.Email.Contains(search));
+                    EF.Functions.ILike(u.FullName, pattern, SearchPattern.Escape) ||
+                    (u.UserName != null && EF.Functions.ILike(u.UserName, pattern, SearchPattern.Escape)) ||
+                    (u.Email != null && EF.Functions.ILike(u.Email, pattern, SearchPattern.Escape)));
             }
 
             return await query.OrderBy(u => u.FullName).ThenBy(u => u.Id).ToPagedAsync(filter);

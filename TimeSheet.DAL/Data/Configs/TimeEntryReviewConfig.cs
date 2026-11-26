@@ -11,8 +11,9 @@ namespace TimeSheet.DAL.Data.Configs
             builder.ToTable("TimeEntryReviews", t =>
             {
                 // Rejected (2) and Reopened (3) must carry a non-blank comment.
+                // PostgreSQL syntax: "double-quoted" identifiers and LENGTH (SQL Server's LEN doesn't exist).
                 t.HasCheckConstraint("CK_TimeEntryReviews_Comment_Required",
-                    "[Decision] = 1 OR ([Comment] IS NOT NULL AND LEN(TRIM([Comment])) > 0)");
+                    "\"Decision\" = 1 OR (\"Comment\" IS NOT NULL AND LENGTH(TRIM(\"Comment\")) > 0)");
             });
             builder.HasKey(r => r.Id);
 

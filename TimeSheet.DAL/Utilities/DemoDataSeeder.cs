@@ -250,7 +250,7 @@ namespace TimeSheet.DAL.Utilities
             var entry = AddEntry(p, employee, workday, hours, notes, TimeEntryStatus.PendingManager,
                 (ReviewLevel.Manager, ReviewDecision.Rejected, rejectionComment));
 
-            var resubmittedAt = Clamp(entry.WorkDate.ToDateTime(new TimeOnly(11, 0)).AddDays(1), order: 4);
+            var resubmittedAt = Clamp(entry.WorkDate.ToDateTime(new TimeOnly(11, 0), DateTimeKind.Utc).AddDays(1), order: 4);
             entry.SubmittedAt = resubmittedAt;
             entry.UpdatedAt = resubmittedAt;
         }
@@ -279,7 +279,9 @@ namespace TimeSheet.DAL.Utilities
             }
 
             // Logged at the end of the work day; manager reviews next morning, director the morning after.
-            var submittedAt = Clamp(day.ToDateTime(new TimeOnly(15, 0)), order: 0);
+            // Every ToDateTime in this file passes DateTimeKind.Utc: Npgsql refuses to write a
+            // non-UTC DateTime to a "timestamp with time zone" column.
+            var submittedAt = Clamp(day.ToDateTime(new TimeOnly(15, 0), DateTimeKind.Utc), order: 0);
 
             var entry = new TimeEntry
             {
@@ -302,7 +304,7 @@ namespace TimeSheet.DAL.Utilities
                     Level = level,
                     Decision = decision,
                     Comment = comment,
-                    CreatedAt = Clamp(day.ToDateTime(new TimeOnly(7 + i, 30)).AddDays(i + 1), order: i + 1)
+                    CreatedAt = Clamp(day.ToDateTime(new TimeOnly(7 + i, 30), DateTimeKind.Utc).AddDays(i + 1), order: i + 1)
                 });
             }
 
@@ -321,7 +323,7 @@ namespace TimeSheet.DAL.Utilities
                 ContactEmail = email,
                 Phone = phone,
                 IsActive = isActive,
-                CreatedAt = _workdays[^1].ToDateTime(new TimeOnly(9, 0))
+                CreatedAt = _workdays[^1].ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc)
             };
             _db.Clients.Add(client);
             return client;
@@ -347,7 +349,7 @@ namespace TimeSheet.DAL.Utilities
                 StartDate = start,
                 EndDate = endWorkday is { } w ? _workdays[w - 1] : endInDays is { } d ? _today.AddDays(d) : null,
                 Status = status,
-                CreatedAt = start.ToDateTime(new TimeOnly(8, 0))
+                CreatedAt = start.ToDateTime(new TimeOnly(8, 0), DateTimeKind.Utc)
             };
 
             foreach (var e in team)

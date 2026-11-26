@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TimeSheet.BLL.Services.Classes;
@@ -12,14 +12,14 @@ using TimeSheet.DAL.Utilities;
 
 namespace TimeSheet.Tests.Integration
 {
-    // A real SQL Server database (LocalDB by default) built from the real migrations, so the
+    // A real PostgreSQL database (localhost:5432 by default — `docker compose up -d`) built from the real migrations, so the
     // DB safety nets (unique/filtered index, check constraints, FK restrict, RowVersion) and
     // EF's SQL translation are tested for real. Created once per test run, dropped at the end.
     //
-    // Override the server with TIMESHEET_TEST_SQLSERVER (a connection string without a database),
-    // e.g. "Server=.;Trusted_Connection=True;TrustServerCertificate=True".
+    // Override the server with TIMESHEET_TEST_POSTGRES (a connection string without a database),
+    // e.g. "Host=localhost;Port=5432;Username=postgres;Password=postgres".
     // Run only unit tests with:  dotnet test --filter "Category!=Integration"
-    public sealed class SqlServerFixture : IAsyncLifetime
+    public sealed class PostgresFixture : IAsyncLifetime
     {
         // Business "today" for every integration test = 2026-10-26 (Asia/Riyadh).
         public static readonly DateTimeOffset UtcNow = new(2026, 10, 26, 9, 0, 0, TimeSpan.Zero);
@@ -27,14 +27,15 @@ namespace TimeSheet.Tests.Integration
 
         public string ConnectionString { get; }
 
-        public SqlServerFixture()
+        public PostgresFixture()
         {
-            var server = Environment.GetEnvironmentVariable("TIMESHEET_TEST_SQLSERVER")
-                         ?? @"Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True";
+            var server = Environment.GetEnvironmentVariable("TIMESHEET_TEST_POSTGRES")
+                         ?? "Host=localhost;Port=5432;Username=postgres;Password=postgres";
 
-            ConnectionString = new SqlConnectionStringBuilder(server)
+            ConnectionString = new NpgsqlConnectionStringBuilder(server)
             {
-                InitialCatalog = $"TimeSheet_IntegrationTests_{Guid.NewGuid():N}"
+                // Lower-case on purpose: PostgreSQL folds unquoted identifiers to lower case.
+                Database = $"timesheet_it_{Guid.NewGuid():N}"
             }.ConnectionString;
         }
 
@@ -55,8 +56,8 @@ namespace TimeSheet.Tests.Integration
 
         // Same provider options as Program.cs (retry on transient errors incl. deadlocks).
         public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(ConnectionString, sql => sql.EnableRetryOnFailure(
-                maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(1), errorNumbersToAdd: null))
+            .UseNpgsql(ConnectionString, npgsql => npgsql.EnableRetryOnFailure(
+                maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(1), errorCodesToAdd: null))
             .Options);
 
         // A fresh set of services over a fresh DbContext — one per "request".
@@ -159,7 +160,7 @@ namespace TimeSheet.Tests.Integration
                 MaxDailyHours = 12,
                 MaxBackdateDays = 30
             });
-            var clock = new BusinessClock(new FixedTimeProvider(SqlServerFixture.UtcNow), settings);
+            var clock = new BusinessClock(new FixedTimeProvider(PostgresFixture.UtcNow), settings);
 
             Db = db;
             Uow = new UnitOfWork(db);
@@ -176,8 +177,8 @@ namespace TimeSheet.Tests.Integration
     }
 
     [CollectionDefinition(Name)]
-    public class SqlServerCollection : ICollectionFixture<SqlServerFixture>
+    public class PostgresCollection : ICollectionFixture<PostgresFixture>
     {
-        public const string Name = "SqlServer";
+        public const string Name = "Postgres";
     }
 }

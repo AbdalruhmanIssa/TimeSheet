@@ -8,11 +8,13 @@ namespace TimeSheet.DAL.Data.Configs
     {
         public void Configure(EntityTypeBuilder<Project> builder)
         {
+            // Raw SQL in check constraints: PostgreSQL quotes identifiers with "double quotes"
+            // (EF creates PascalCase column names, which are case-sensitive once quoted).
             builder.ToTable("Projects", t =>
             {
-                t.HasCheckConstraint("CK_Projects_BudgetHours_Positive", "[BudgetHours] > 0");
-                t.HasCheckConstraint("CK_Projects_Manager_Not_Director", "[ManagerId] <> [DirectorId]");
-                t.HasCheckConstraint("CK_Projects_EndDate_After_StartDate", "[EndDate] IS NULL OR [EndDate] >= [StartDate]");
+                t.HasCheckConstraint("CK_Projects_BudgetHours_Positive", "\"BudgetHours\" > 0");
+                t.HasCheckConstraint("CK_Projects_Manager_Not_Director", "\"ManagerId\" <> \"DirectorId\"");
+                t.HasCheckConstraint("CK_Projects_EndDate_After_StartDate", "\"EndDate\" IS NULL OR \"EndDate\" >= \"StartDate\"");
             });
             builder.HasKey(p => p.Id);
 
@@ -23,7 +25,8 @@ namespace TimeSheet.DAL.Data.Configs
 
             builder.Property(p => p.Name)
                 .IsRequired()
-                .HasMaxLength(200);
+                .HasMaxLength(200)
+                .HasColumnType("citext"); // case-insensitive, so the unique index below ignores case
 
             // One project per name (checked in ProjectService with a clear message; this is the safety net).
             builder.HasIndex(p => p.Name).IsUnique();

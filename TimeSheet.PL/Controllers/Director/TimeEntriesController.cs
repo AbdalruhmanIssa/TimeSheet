@@ -30,6 +30,14 @@ namespace TimeSheet.PL.Controllers.Director
         }
 
         // PendingDirector -> Approved
+        // Approved entries on my projects, latest approval first: the ones I can reopen.
+        [HttpGet("approved")]
+        public async Task<IActionResult> GetApproved([FromQuery] ApprovedEntryFilterRequest filter)
+        {
+            var entries = await _approvalService.GetApprovedAsync(User.GetUserId(), filter);
+            return Ok(entries);
+        }
+
         [HttpPost("{id:guid}/approve")]
         public async Task<IActionResult> Approve(Guid id)
         {

@@ -7,13 +7,13 @@ namespace TimeSheet.Tests.Integration
 {
     // The database's own safety nets — what still holds if a bug ever skips a BLL check.
     // These write through EF directly, bypassing the services on purpose.
-    [Collection(SqlServerCollection.Name)]
+    [Collection(PostgresCollection.Name)]
     [Trait("Category", "Integration")]
     public class DatabaseConstraintsTests
     {
-        private readonly SqlServerFixture _db;
+        private readonly PostgresFixture _db;
 
-        public DatabaseConstraintsTests(SqlServerFixture db) => _db = db;
+        public DatabaseConstraintsTests(PostgresFixture db) => _db = db;
 
         // ---------------------------------------------------------------- One entry per project per day
 
@@ -30,8 +30,8 @@ namespace TimeSheet.Tests.Integration
             var act = () => Insert(Entry(w, w.ProjectId, TimeEntryStatus.PendingManager));
 
             (await act.Should().ThrowAsync<DbUpdateException>())
-                .WithInnerException<Microsoft.Data.SqlClient.SqlException>()
-                .Where(e => e.Number == 2601 || e.Number == 2627);
+                .WithInnerException<Npgsql.PostgresException>() // SQLSTATE 23505 = unique_violation
+                .Where(e => e.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation);
         }
 
         [Fact]
@@ -157,12 +157,12 @@ namespace TimeSheet.Tests.Integration
             await Insert(first);
 
             var copy = Project(w);
-            copy.Name = first.Name.ToUpperInvariant(); // SQL Server's default collation is case-insensitive
+            copy.Name = first.Name.ToUpperInvariant(); // Name is citext, so uniqueness is case-insensitive
             var act = () => Insert(copy);
 
             (await act.Should().ThrowAsync<DbUpdateException>())
-                .WithInnerException<Microsoft.Data.SqlClient.SqlException>()
-                .Where(e => e.Number == 2601 || e.Number == 2627);
+                .WithInnerException<Npgsql.PostgresException>() // SQLSTATE 23505 = unique_violation
+                .Where(e => e.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation);
         }
 
         // ---------------------------------------------------------------- Foreign keys
@@ -254,7 +254,7 @@ namespace TimeSheet.Tests.Integration
             Id = Guid.NewGuid(),
             ProjectId = projectId,
             EmployeeId = employeeId ?? w.EmployeeId,
-            WorkDate = SqlServerFixture.Today.AddDays(-1),
+            WorkDate = PostgresFixture.Today.AddDays(-1),
             Hours = hours,
             Status = status,
             SubmittedAt = DateTime.UtcNow

@@ -10,14 +10,14 @@ namespace TimeSheet.Tests.Integration
 {
     // Two requests at the same moment. Each round runs on fresh users/projects and
     // two separate DbContexts — exactly what two HTTP requests would get.
-    [Collection(SqlServerCollection.Name)]
+    [Collection(PostgresCollection.Name)]
     [Trait("Category", "Integration")]
     public class ConcurrencyTests
     {
         private const int Rounds = 3;
-        private readonly SqlServerFixture _db;
+        private readonly PostgresFixture _db;
 
-        public ConcurrencyTests(SqlServerFixture db) => _db = db;
+        public ConcurrencyTests(PostgresFixture db) => _db = db;
 
         [Fact]
         public async Task DailyCap_TwoSubmitsAtOnceOnDifferentProjects_OnlyOneFits()
@@ -25,7 +25,7 @@ namespace TimeSheet.Tests.Integration
             for (var round = 0; round < Rounds; round++)
             {
                 var w = await _db.CreateWorldAsync();
-                var day = SqlServerFixture.Today.AddDays(-1);
+                var day = PostgresFixture.Today.AddDays(-1);
 
                 // 8 h + 8 h > 12 h: both checks pass if run without isolation — serializable must stop one.
                 var outcomes = await RunTogether(
@@ -48,7 +48,7 @@ namespace TimeSheet.Tests.Integration
             for (var round = 0; round < Rounds; round++)
             {
                 var w = await _db.CreateWorldAsync();
-                var day = SqlServerFixture.Today.AddDays(-2);
+                var day = PostgresFixture.Today.AddDays(-2);
 
                 var outcomes = await RunTogether(
                     s => s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, day, 2)),
@@ -72,7 +72,7 @@ namespace TimeSheet.Tests.Integration
                 var w = await _db.CreateWorldAsync();
                 Guid entryId;
                 await using (var s = _db.CreateServices())
-                    entryId = (await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, SqlServerFixture.Today, 4))).Id;
+                    entryId = (await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, PostgresFixture.Today, 4))).Id;
 
                 var outcomes = await RunTogether(
                     s => s.Approvals.ApproveAsync(w.ManagerId, AppRoles.Manager, entryId),
@@ -99,13 +99,13 @@ namespace TimeSheet.Tests.Integration
                 var w = await _db.CreateWorldAsync();
                 Guid entryId;
                 await using (var s = _db.CreateServices())
-                    entryId = (await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, SqlServerFixture.Today, 4))).Id;
+                    entryId = (await s.Entries.SubmitAsync(w.EmployeeId, Submit(w.ProjectId, PostgresFixture.Today, 4))).Id;
 
                 var outcomes = await RunTogether(
                     s => s.Entries.UpdateAsync(w.EmployeeId, entryId, new UpdateTimeEntryRequest
                     {
                         ProjectId = w.ProjectId,
-                        WorkDate = SqlServerFixture.Today,
+                        WorkDate = PostgresFixture.Today,
                         Hours = 6
                     }),
                     s => s.Approvals.ApproveAsync(w.ManagerId, AppRoles.Manager, entryId));

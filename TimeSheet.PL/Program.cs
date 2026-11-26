@@ -92,12 +92,15 @@ if (string.IsNullOrWhiteSpace(connectionString))
         "Local development: dotnet user-secrets set \"ConnectionStrings:Default\" \"<connection string>\" --project TimeSheet.PL. " +
         "Production: set the DB_CONNECTION_STRING (or ConnectionStrings__Default) environment variable.");
 
+// PostgreSQL via Npgsql. EnableRetryOnFailure retries errors Npgsql marks as transient
+// (dropped connections, deadlocks, serialization failures from SERIALIZABLE transactions);
+// errorCodesToAdd: null = no extra SQLSTATE codes beyond that default list.
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString, sql =>
-        sql.EnableRetryOnFailure(
+    options.UseNpgsql(connectionString, npgsql =>
+        npgsql.EnableRetryOnFailure(
             maxRetryCount: 3,
             maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorNumbersToAdd: null)));
+            errorCodesToAdd: null)));
 
 // ==============================
 // Identity

@@ -50,6 +50,9 @@ namespace TimeSheet.DAL.Data
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+            // citext = case-insensitive text. Client and Project names use it so their unique
+            // indexes treat "Acme" and "ACME" as the same name. The migration runs CREATE EXTENSION.
+            builder.HasPostgresExtension("citext");
             builder.ApplyConfiguration(new ApplicationUserConfig());
             builder.ApplyConfiguration(new ClientConfig());
             builder.ApplyConfiguration(new ProjectConfig());

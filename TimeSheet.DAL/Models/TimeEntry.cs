@@ -23,7 +23,8 @@ namespace TimeSheet.DAL.Models
         public DateTime SubmittedAt { get; set; }
 
         // Concurrency token: a second reviewer gets "already reviewed".
-        public byte[] RowVersion { get; set; } = null!;
+        // Mapped to PostgreSQL's xmin system column.
+        public uint RowVersion { get; set; }
 
         // Review history (manager/director approvals, rejections, reopens).
         public ICollection<TimeEntryReview> Reviews { get; set; } = new List<TimeEntryReview>();

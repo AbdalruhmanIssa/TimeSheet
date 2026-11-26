@@ -21,7 +21,7 @@ Structure and conventions follow the Brainova repo (github.com/AbdalruhmanIssa/b
 
 ## 2. Database
 
-All tables except users inherit `BaseEntity` (`Guid Id`, `CreatedAt`, `UpdatedAt`, set in `SaveChanges`).
+PostgreSQL (Npgsql). All tables except users inherit `BaseEntity` (`Guid Id`, `CreatedAt`, `UpdatedAt`, set in `SaveChanges`).
 
 ### ApplicationUser : IdentityUser
 `FullName`, `IsBlocked`. (Add a 1-1 `EmployeeProfiles` table later only if HR fields are needed.)
@@ -29,7 +29,7 @@ All tables except users inherit `BaseEntity` (`Guid Id`, `CreatedAt`, `UpdatedAt
 ### Clients (the employer)
 | Column | Rule |
 |---|---|
-| `Name` | nvarchar(200), required, unique |
+| `Name` | citext (200), required, unique (case-insensitive) |
 | `ContactName`, `ContactEmail`, `Phone` | optional |
 | `IsActive` | soft-disable instead of delete |
 
@@ -37,7 +37,7 @@ All tables except users inherit `BaseEntity` (`Guid Id`, `CreatedAt`, `UpdatedAt
 | Column | Rule |
 |---|---|
 | `Code` | unique, auto-generated (`PRJ-0007`) |
-| `Name` | nvarchar(200), required, **unique** (across all directors and statuses; case-insensitive) |
+| `Name` | citext (200), required, **unique** (across all directors and statuses; case-insensitive) |
 | `Description` | |
 | `ClientId` | FK → Clients, Restrict |
 | `DirectorId` | FK → Users, Restrict |
@@ -66,10 +66,10 @@ Assigning an employee who is already active on the team is **rejected** (the who
 | `EmployeeId` | FK → Users, Restrict |
 | `WorkDate` | `DateOnly`; not in the future (business time zone); not older than `MaxBackdateDays` |
 | `Hours` | decimal(5,2), check `> 0 AND <= 12` |
-| `Notes` | nvarchar(1000); multiple tasks go in one entry's notes |
+| `Notes` | varchar(1000); multiple tasks go in one entry's notes |
 | `Status` | `TimeEntryStatus` |
 | `SubmittedAt` | updated on resubmission |
-| `RowVersion` | rowversion, concurrency token |
+| `RowVersion` | `uint` mapped to PostgreSQL's `xmin` system column, concurrency token |
 
 Indexes:
 - `(ProjectId, Status, WorkDate)` — reports
@@ -83,7 +83,7 @@ Indexes:
 | `ReviewerId` | FK → Users, Restrict |
 | `Level` | `ReviewLevel` |
 | `Decision` | `ReviewDecision` |
-| `Comment` | nvarchar(1000); required for Rejected and Reopened |
+| `Comment` | varchar(1000); required for Rejected and Reopened |
 
 ### Enums (store as int, values pinned)
 - `TimeEntryStatus`: `PendingManager = 0, PendingDirector = 1, Approved = 2, Rejected = 3, Cancelled = 4`
@@ -222,7 +222,7 @@ No SignalR. Dashboards expose pending counts; the frontend polls.
 
 Routes: `api/[area]/[controller]`, `[Authorize(Roles = "...")]`.
 
-**Paging:** every list endpoint (users, clients, projects, my entries, pending queues, portfolio) takes
+**Paging:** every list endpoint (users, clients, projects, my entries, pending queues, approved list, portfolio) takes
 `?page=1&pageSize=20` (pageSize 1–100) and returns `{ items, page, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`.
 Dropdowns and reports are not paged.
 
@@ -249,6 +249,7 @@ Dropdowns and reports are not paged.
 - `PATCH  Director/Projects/{id}/status`
 - `POST   Director/Projects/{id}/employees` · `DELETE Director/Projects/{id}/employees/{employeeId}`
 - `GET    Director/TimeEntries/pending` (with budget impact)
+- `GET    Director/TimeEntries/approved?projectId=&employeeId=&from=&to=` — Approved entries on his projects (the ones he can reopen), latest approval first, with who approved at each level
 - `POST   Director/TimeEntries/{id}/approve | reject | reopen` · `POST Director/TimeEntries/bulk-approve`
 - `GET    Director/Reports/portfolio` · `Director/Reports/projects/{id}/summary | daily | employees | pdf`
 - `GET    Director/Dashboards`

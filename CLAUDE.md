@@ -8,7 +8,7 @@
 - **Never run `git commit`.** Stage changes or leave them for Abood to commit himself.
 
 ## Stack
-- .NET 10, ASP.NET Core Web API, EF Core + SQL Server, ASP.NET Identity + JWT, Mapster, QuestPDF, Scalar, xUnit + Moq + MockQueryable + FluentAssertions.
+- .NET 10, ASP.NET Core Web API, EF Core + PostgreSQL (Npgsql), ASP.NET Identity + JWT, Mapster, QuestPDF, Scalar, xUnit + Moq + MockQueryable + FluentAssertions.
 - No SignalR.
 
 ## Conventions (same as Brainova)

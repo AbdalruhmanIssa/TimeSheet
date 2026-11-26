@@ -19,6 +19,7 @@ namespace TimeSheet.Tests.Services
         private const string Director1 = "dir-1";
         private const string Director2 = "dir-2";
         private const string Employee = "emp-1";
+        private const string OtherEmployee = "emp-2";
 
         private readonly Mock<IUnitOfWork> _uow = new();
         private readonly Dictionary<string, DAL.Models.ApplicationUser> _users;
@@ -37,7 +38,7 @@ namespace TimeSheet.Tests.Services
             {
                 NewUser(Manager1, "Mona Manager"), NewUser(Manager2, "Omar Manager"),
                 NewUser(Director1, "Dina Director"), NewUser(Director2, "Other Director"),
-                NewUser(Employee, "Eve Employee")
+                NewUser(Employee, "Eve Employee"), NewUser(OtherEmployee, "Sam Second")
             }.ToDictionary(u => u.Id);
 
             _p1 = AddProject("PRJ-0001", Manager1, Director1, budget: 100);
@@ -124,6 +125,83 @@ namespace TimeSheet.Tests.Services
 
             result.Single().ManagerApprovedBy.Should().Be("Mona Manager");
             result.Single().ManagerApprovedAt.Should().NotBeNull();
+        }
+
+        // ---------------------------------------------------------------- Approved list (director)
+
+        [Fact]
+        public async Task GetApprovedAsync_SeesOnlyApprovedOnHisProjects_LatestApprovalFirst()
+        {
+            var earlier = AddEntry(_p1, TimeEntryStatus.Approved);
+            AddReview(earlier, Director1, ReviewLevel.Director, ReviewDecision.Approved, minutesAgo: 60);
+            var later = AddEntry(_p1, TimeEntryStatus.Approved);
+            AddReview(later, Director1, ReviewLevel.Director, ReviewDecision.Approved, minutesAgo: 5);
+            AddEntry(_p1, TimeEntryStatus.PendingDirector);
+            AddEntry(_p1, TimeEntryStatus.Rejected);
+            AddEntry(_p2, TimeEntryStatus.Approved); // other director's project
+
+            var result = (await _sut.GetApprovedAsync(Director1, new ApprovedEntryFilterRequest())).Items;
+
+            result.Select(e => e.Id).Should().Equal(later.Id, earlier.Id);
+        }
+
+        [Fact]
+        public async Task GetApprovedAsync_ShowsWhoApprovedAtBothLevels()
+        {
+            var entry = AddEntry(_p1, TimeEntryStatus.Approved);
+            AddReview(entry, Manager1, ReviewLevel.Manager, ReviewDecision.Approved, minutesAgo: 30);
+            AddReview(entry, Director1, ReviewLevel.Director, ReviewDecision.Approved, minutesAgo: 10);
+
+            var result = (await _sut.GetApprovedAsync(Director1, new ApprovedEntryFilterRequest())).Items.Single();
+
+            result.ManagerApprovedBy.Should().Be("Mona Manager");
+            result.DirectorApprovedBy.Should().Be("Dina Director");
+            result.DirectorApprovedAt.Should().NotBeNull();
+            result.BudgetImpact.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetApprovedAsync_FiltersByProjectEmployeeAndDateRange()
+        {
+            var p3 = AddProject("PRJ-0003", Manager1, Director1, budget: 100);
+            var match = AddEntry(_p1, TimeEntryStatus.Approved, daysAgo: 3);
+            AddEntry(p3, TimeEntryStatus.Approved, daysAgo: 3);                       // other project
+            AddEntry(_p1, TimeEntryStatus.Approved, daysAgo: 3, employeeId: OtherEmployee); // other employee
+            AddEntry(_p1, TimeEntryStatus.Approved, daysAgo: 10);                     // before 'from'
+            AddEntry(_p1, TimeEntryStatus.Approved, daysAgo: 0);                      // after 'to'
+
+            var filter = new ApprovedEntryFilterRequest
+            {
+                ProjectId = _p1.Id,
+                EmployeeId = Employee,
+                From = match.WorkDate.AddDays(-1),
+                To = match.WorkDate.AddDays(1)
+            };
+            var result = (await _sut.GetApprovedAsync(Director1, filter)).Items;
+
+            result.Should().ContainSingle(e => e.Id == match.Id);
+        }
+
+        [Fact]
+        public async Task GetApprovedAsync_FromAfterTo_ThrowsBadRequest()
+        {
+            var filter = new ApprovedEntryFilterRequest { From = new DateOnly(2026, 10, 20), To = new DateOnly(2026, 10, 10) };
+
+            var act = () => _sut.GetApprovedAsync(Director1, filter);
+
+            await act.Should().ThrowAsync<BadRequestException>();
+        }
+
+        [Fact]
+        public async Task GetApprovedAsync_ReopenedEntry_DropsOutOfTheList()
+        {
+            var entry = AddEntry(_p1, TimeEntryStatus.Approved);
+            AddReview(entry, Director1, ReviewLevel.Director, ReviewDecision.Approved);
+
+            await _sut.ReopenAsync(Director1, entry.Id, new ReviewRequest { Comment = "Wrong project" });
+            var result = (await _sut.GetApprovedAsync(Director1, new ApprovedEntryFilterRequest())).Items;
+
+            result.Should().BeEmpty();
         }
 
         // ---------------------------------------------------------------- Manager actions
@@ -368,15 +446,15 @@ namespace TimeSheet.Tests.Services
         }
 
         private TimeEntry AddEntry(Project project, TimeEntryStatus status, decimal hours = 4,
-            int daysAgo = 1, int submittedMinutesAgo = 5)
+            int daysAgo = 1, int submittedMinutesAgo = 5, string employeeId = Employee)
         {
             var entry = new TimeEntry
             {
                 Id = Guid.NewGuid(),
                 ProjectId = project.Id,
                 Project = project,
-                EmployeeId = Employee,
-                Employee = _users[Employee],
+                EmployeeId = employeeId,
+                Employee = _users[employeeId],
                 WorkDate = new DateOnly(2026, 10, 26).AddDays(-daysAgo),
                 Hours = hours,
                 Status = status,
@@ -386,7 +464,8 @@ namespace TimeSheet.Tests.Services
             return entry;
         }
 
-        private void AddReview(TimeEntry entry, string reviewerId, ReviewLevel level, ReviewDecision decision, string? comment = null)
+        private void AddReview(TimeEntry entry, string reviewerId, ReviewLevel level, ReviewDecision decision,
+            string? comment = null, int minutesAgo = 1)
         {
             var review = new TimeEntryReview
             {
@@ -397,7 +476,7 @@ namespace TimeSheet.Tests.Services
                 Level = level,
                 Decision = decision,
                 Comment = comment,
-                CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+                CreatedAt = DateTime.UtcNow.AddMinutes(-minutesAgo)
             };
             entry.Reviews.Add(review);
             _reviews.Add(review);

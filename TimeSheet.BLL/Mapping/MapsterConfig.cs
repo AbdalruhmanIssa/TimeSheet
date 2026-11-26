@@ -53,6 +53,16 @@ namespace TimeSheet.BLL.Mapping
                     .OrderByDescending(r => r.CreatedAt)
                     .Select(r => (DateTime?)r.CreatedAt)
                     .FirstOrDefault())
+                .Map(d => d.DirectorApprovedBy, s => s.Reviews
+                    .Where(r => r.Level == ReviewLevel.Director && r.Decision == ReviewDecision.Approved)
+                    .OrderByDescending(r => r.CreatedAt)
+                    .Select(r => r.Reviewer.FullName)
+                    .FirstOrDefault())
+                .Map(d => d.DirectorApprovedAt, s => s.Reviews
+                    .Where(r => r.Level == ReviewLevel.Director && r.Decision == ReviewDecision.Approved)
+                    .OrderByDescending(r => r.CreatedAt)
+                    .Select(r => (DateTime?)r.CreatedAt)
+                    .FirstOrDefault())
                 .Ignore(d => d.BudgetImpact); // computed in ApprovalService (director only)
 
             config.NewConfig<TimeEntryReview, TimeEntryReviewResponse>()

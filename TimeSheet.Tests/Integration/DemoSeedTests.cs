@@ -16,7 +16,7 @@ namespace TimeSheet.Tests.Integration
     [Trait("Category", "Integration")]
     public class DemoSeedTests : IAsyncLifetime
     {
-        private readonly SqlServerFixture _db = new();
+        private readonly PostgresFixture _db = new();
         private Dictionary<string, string> _ids = new();
 
         // Business-time-zone date, the same value Program.cs passes (IBusinessClock.Today).
@@ -294,7 +294,7 @@ namespace TimeSheet.Tests.Integration
         {
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddDbContext<AppDbContext>(o => o.UseSqlServer(_db.ConnectionString));
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_db.ConnectionString));
             services.AddIdentityCore<ApplicationUser>(o =>
                 {
                     o.Password.RequiredLength = 8;
